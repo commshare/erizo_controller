@@ -1,5 +1,6 @@
 #include "rabbitmq_rpc.h"
 #include "common/config.h"
+#include "common/utils.h"
 
 #include <iostream>
 
@@ -58,7 +59,7 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
         ELOG_ERROR("Opening channel failed");
         return 1;
     }
-    //创建exchange,如果exchange已经存在会返回错误,忽略这个错误
+
     amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(exchange.c_str()),
                           amqp_cstring_bytes(exchange_type.c_str()), 0, 0, 0, 0,
                           amqp_empty_table);
@@ -81,7 +82,6 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
     }
 
     reply_to_ = stringifyBytes(queuename);
-    std::cout << reply_to_ << std::endl;
     amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(exchange.c_str()),
                     queuename, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
@@ -139,7 +139,6 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
         while (run_)
         {
             std::unique_lock<std::mutex> lock(send_queue_mux_);
-
             if (!send_queue_.empty())
             {
                 AMQPData data = send_queue_.front();
@@ -150,6 +149,29 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
             {
                 send_cond_.wait(lock);
             }
+        }
+    }));
+
+    check_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+        while (run_)
+        {
+            std::unique_ptr<std::mutex>(cb_queue_mux_);
+            uint64_t now = Utils::getCurrentMs();
+            for (AMQPCallback &cb : cb_queue_)
+            {
+                if (cb.ts != 0)
+                {
+                    int dur = (int)(now - cb.ts);
+                    if (dur > Config::getInstance()->rabbitmq_timeout_)
+                    {
+                        ELOG_ERROR("Rabbitmq rpc callback %#x timeout", cb);
+                        cb.data = Json::nullValue;
+                        cb.cond.notify_one();
+                        cb.ts = 0;
+                    }
+                }
+            }
+            usleep(500000); //500ms
         }
     }));
 
@@ -166,6 +188,7 @@ void AMQPRPC::close()
         return;
     }
     run_ = false;
+    check_thread_->join();
     recv_thread_->join();
     send_cond_.notify_all();
     send_thread_->join();
@@ -185,6 +208,9 @@ void AMQPRPC::close()
 
     init_ = false;
     conn_ = nullptr;
+
+    check_thread_.reset();
+    check_thread_ = nullptr;
     recv_thread_.reset();
     recv_thread_ = nullptr;
     send_thread_.reset();
@@ -200,11 +226,14 @@ void AMQPRPC::handleCallback(const std::string &msg)
 
     if (root["corrID"].isNull() ||
         root["corrID"].type() != Json::intValue ||
+        root["UUID"].isNull() ||
+        root["UUID"].type() != Json::stringValue ||
         root["data"].isNull() ||
         root["data"].type() != Json::objectValue)
         return;
 
     int corrid = root["corrID"].asInt();
+    std::string uuid = root["UUID"].asString();
     Json::Value data = root["data"];
 
     if (corrid < 0 || corrid > kQueueSize)
@@ -212,8 +241,11 @@ void AMQPRPC::handleCallback(const std::string &msg)
 
     std::unique_ptr<std::mutex>(cb_queue_mux_);
     AMQPCallback &cb = cb_queue_[corrid];
-    cb.data = data;
-    cb.cond->notify_one();
+    if (!cb.uuid.compare(uuid))
+    {
+        cb.data = data;
+        cb.cond.notify_one();
+    }
 }
 
 void AMQPRPC::addRPC(const std::string &exchange,
@@ -222,15 +254,18 @@ void AMQPRPC::addRPC(const std::string &exchange,
                      const Json::Value &data,
                      const std::function<void(const Json::Value &)> &func)
 {
+    std::string uuid = Utils::getUUID();
     int corrid = index_ % kQueueSize;
     index_++;
     index_ = index_ % kQueueSize;
 
-    std::thread([&, this, func, corrid]() {
+    std::thread([&, this, func, corrid, uuid]() {
         AMQPCallback &cb = cb_queue_[corrid];
-        std::unique_lock<std::mutex> lock(*cb.mux);
+        std::unique_lock<std::mutex> lock(cb.mux);
+        cb.ts = Utils::getCurrentMs();
         cb.data = Json::nullValue;
-        cb.cond->wait(lock);
+        cb.uuid = uuid;
+        cb.cond.wait(lock);
         func(cb.data);
     })
         .detach();
@@ -238,6 +273,7 @@ void AMQPRPC::addRPC(const std::string &exchange,
     Json::Value root;
     root["corrID"] = corrid;
     root["replyTo"] = reply_to_;
+    root["UUID"] = uuid;
     root["data"] = data;
     Json::FastWriter writer;
     std::string msg = writer.write(root);
@@ -318,7 +354,7 @@ void AMQPRPC::notifyAllCallbackThread()
 {
     std::unique_lock<std::mutex>(cb_queue_mux_);
     for (AMQPCallback &cb : cb_queue_)
-        cb.cond->notify_all();
+        cb.cond.notify_all();
 }
 
 int AMQPRPC::callback(const std::string &exchange, const std::string &queuename, const std::string &binding_key, const std::string &send_msg)

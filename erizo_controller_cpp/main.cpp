@@ -11,8 +11,6 @@ int main()
   AMQPRPC rpc;
   rpc.init("rpcExchange", "direct");
 
-  // bool b =helper->isClientExist("6666");
-  // std::cout<<"ds:"<<b<<std::endl;
   Json::Value root;
   Json::Reader reader;
   if (!reader.parse("{\"method\":\"keepAlive\"}", root))
@@ -23,10 +21,6 @@ int main()
              "ErizoJS_666666666666",
              root,
              [](const Json::Value &tt) {
-               Json::FastWriter writer;
-               std::string msg = writer.write(tt);
-
-               printf("%s\n", msg.c_str());
              });
 
   sleep(100000);

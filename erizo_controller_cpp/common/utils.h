@@ -57,9 +57,9 @@ class Utils
 
     static uint64_t getCurrentMs()
     {
-        auto time_now = chrono::system_clock::now();
-        auto duration_in_ms = chrono::duration_cast<chrono::milliseconds>(time_now.time_since_epoch());
-        return duration_in_ms.count();
+        auto now = std::chrono::steady_clock::now();
+        auto now_since_epoch = now.time_since_epoch();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(now_since_epoch).count();
     }
 };
 

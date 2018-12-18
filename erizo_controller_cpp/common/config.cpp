@@ -25,6 +25,7 @@ Config::Config()
     rabbitmq_passwd_ = "linmin";
     rabbitmq_hostname_ = "localhost";
     rabbitmq_port_ = 5672;
+    rabbitmq_timeout_ = 1000;
 }
 
 Config *Config::getInstance()
@@ -114,7 +115,9 @@ int Config::init(const std::string &config_file)
         rabbitmq["username"].isNull() ||
         rabbitmq["username"].type() != Json::stringValue ||
         rabbitmq["password"].isNull() ||
-        rabbitmq["password"].type() != Json::stringValue)
+        rabbitmq["password"].type() != Json::stringValue ||
+        rabbitmq["timeout"].isNull() ||
+        rabbitmq["timeout"].type() != Json::intValue)
     {
         ELOG_ERROR("Rabbitmq config check error");
         return 1;
@@ -137,6 +140,7 @@ int Config::init(const std::string &config_file)
     rabbitmq_port_ = rabbitmq["port"].asInt();
     rabbitmq_username_ = rabbitmq["username"].asString();
     rabbitmq_passwd_ = rabbitmq["password"].asString();
-
+    rabbitmq_timeout_ = rabbitmq["timeout"].asInt();
+    
     return 0;
 }

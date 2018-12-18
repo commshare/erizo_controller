@@ -28,15 +28,16 @@ struct AMQPCallback
 {
     std::atomic<uint64_t> ts;
     Json::Value data;
-    std::unique_ptr<std::condition_variable> cond;
-    std::unique_ptr<std::mutex> mux;
+    std::condition_variable cond;
+    std::mutex mux;
+    std::string uuid;
 
     AMQPCallback()
     {
+        ts = 0;
         data = Json::nullValue;
-        cond = std::unique_ptr<std::condition_variable>(new std::condition_variable);
-        mux = std::unique_ptr<std::mutex>(new std::mutex);
     }
+    AMQPCallback(const AMQPCallback &a) {}
 };
 
 class AMQPRPC
@@ -70,7 +71,7 @@ class AMQPRPC
     bool init_;
     std::atomic<bool> run_;
     amqp_connection_state_t conn_;
-    
+
     std::unique_ptr<std::thread> recv_thread_;
     std::unique_ptr<std::thread> send_thread_;
     std::unique_ptr<std::thread> check_thread_;

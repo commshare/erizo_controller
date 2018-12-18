@@ -19,6 +19,7 @@
         "host": "localhost",
         "port": 5672,
         "username": "linmin",
-        "password": "linmin"
+        "password": "linmin",
+        "timeout": 5000
     }
 }

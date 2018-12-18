@@ -37,6 +37,7 @@ public:
   std::string rabbitmq_passwd_;
   std::string rabbitmq_hostname_;
   unsigned short rabbitmq_port_;
+  int rabbitmq_timeout_;
 
 private:
   Config();
