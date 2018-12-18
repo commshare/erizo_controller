@@ -1,0 +1,24 @@
+{
+    "websocket": {
+        "port": 8080,
+        "ssl_key": "cert/key.pem",
+        "ssl_cert": "cert/cert.pem",
+        "ssl_port": 443
+    },
+    "mysql": {
+        "url": "tcp://119.28.70.47:3306",
+        "username": "root",
+        "password": "cathy978"
+    },
+    "redis": {
+        "ip": "127.0.0.1",
+        "port": 6379,
+        "password": "cathy978"
+    },
+    "rabbitmq": {
+        "host": "localhost",
+        "port": 5672,
+        "username": "linmin",
+        "password": "linmin"
+    }
+}
