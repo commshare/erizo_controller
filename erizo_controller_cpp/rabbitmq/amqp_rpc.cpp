@@ -1,8 +1,7 @@
-#include "rabbitmq_rpc.h"
+#include "amqp_rpc.h"
+
 #include "common/config.h"
 #include "common/utils.h"
-
-#include <iostream>
 
 constexpr int kQueueSize = 256;
 
@@ -164,7 +163,7 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
                     int dur = (int)(now - cb.ts);
                     if (dur > Config::getInstance()->rabbitmq_timeout_)
                     {
-                        ELOG_ERROR("Rabbitmq rpc callback %#x timeout", cb);
+                        ELOG_WARN("Rabbitmq rpc callback %s timeout", cb.uuid);
                         cb.data = Json::nullValue;
                         cb.cond.notify_one();
                         cb.ts = 0;
@@ -262,11 +261,15 @@ void AMQPRPC::addRPC(const std::string &exchange,
     std::thread([&, this, func, corrid, uuid]() {
         AMQPCallback &cb = cb_queue_[corrid];
         std::unique_lock<std::mutex> lock(cb.mux);
-        cb.ts = Utils::getCurrentMs();
-        cb.data = Json::nullValue;
-        cb.uuid = uuid;
-        cb.cond.wait(lock);
-        func(cb.data);
+        if (cb.ts == 0)
+        {
+            cb.ts = Utils::getCurrentMs();
+            cb.data = Json::nullValue;
+            cb.uuid = uuid;
+            cb.cond.wait(lock);
+            func(cb.data);
+            cb.ts = 0;
+        }
     })
         .detach();
 

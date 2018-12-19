@@ -16,33 +16,34 @@
 #include <json/json.h>
 #include <logger.h>
 
-struct AMQPData
-{
-    std::string exchange;
-    std::string queuename;
-    std::string binding_key;
-    std::string msg;
-};
-
-struct AMQPCallback
-{
-    std::atomic<uint64_t> ts;
-    Json::Value data;
-    std::condition_variable cond;
-    std::mutex mux;
-    std::string uuid;
-
-    AMQPCallback()
-    {
-        ts = 0;
-        data = Json::nullValue;
-    }
-    AMQPCallback(const AMQPCallback &a) {}
-};
-
 class AMQPRPC
 {
     DECLARE_LOGGER();
+
+    struct AMQPData
+    {
+        std::string exchange;
+        std::string queuename;
+        std::string binding_key;
+        std::string msg;
+    };
+
+    struct AMQPCallback
+    {
+        std::atomic<uint64_t> ts;
+        Json::Value data;
+        std::string uuid;
+        std::condition_variable cond;
+        std::mutex mux;
+
+        AMQPCallback()
+        {
+            ts = 0;
+            data = Json::nullValue;
+            uuid = "";
+        }
+        AMQPCallback(const AMQPCallback &a) {}
+    };
 
   public:
     AMQPRPC();

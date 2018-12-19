@@ -45,6 +45,71 @@ int ErizoController::init()
             server->send(hdl, reply, websocketpp::frame::opcode::TEXT);
     });
 
+    amqp_ = std::make_shared<AMQPRPC>();
+    if (amqp_->init("rpcExchange", "direct"))
+    {
+        ELOG_ERROR("AMQP initialize failed");
+        return 1;
+    }
+
+    amqp_boardcast_ = std::make_shared<AMQPRPCBoardcast>();
+    if (amqp_boardcast_->init("rpcExchange", "topic", [&, this](const std::string &msg) {
+            Json::Value root;
+            Json::Reader reader;
+            if (!reader.parse(msg, root))
+            {
+                ELOG_ERROR("Boardcast message parse failed");
+                return;
+            }
+            if (root["method"].isNull() ||
+                root["method"].type() != Json::stringValue)
+            {
+                ELOG_ERROR("Boardcast message with not method");
+                return;
+            }
+
+            std::string method = root["method"].asString();
+            if (!method.compare("getErizoAgents"))
+            {
+                getErizoAgents(root);
+            }
+        }))
+    {
+        ELOG_ERROR("AMQPBoardcast initialize failed");
+        return 1;
+    }
+
+    run_ = true;
+    keeplive_thread_ = std::unique_ptr<std::thread>(new std::thread([&, this]() {
+        while (run_)
+        {
+
+            Json::Value msg;
+            msg["method"] = "getErizoAgents";
+
+            amqp_boardcast_->addRPC("broadcastExchange",
+                                    "ErizoAgent",
+                                    "ErizoAgent",
+                                    msg);
+
+            {
+                std::unique_lock<std::mutex>(agents_map_mux_);
+                for (auto it = agents_map_.begin(); it != agents_map_.end();)
+                {
+                    it->second.timeout++;
+                    if (it->second.timeout > 3)
+                    {
+                        ELOG_INFO("EA: id-->%s die", it->second.id);
+                        it = agents_map_.erase(it);
+                        continue;
+                    }
+                    it++;
+                }
+            }
+            usleep(500000); //500ms
+        }
+    }));
+
     return 0;
 }
 
@@ -145,4 +210,25 @@ std::string ErizoController::handleToken(const Json::Value &root)
     }
     Json::FastWriter writer;
     return writer.write(reply);
+}
+
+void ErizoController::getErizoAgents(const Json::Value &root)
+{
+    Json::Value data = root["data"];
+    if (data.isNull() ||
+        data.type() != Json::objectValue ||
+        data["id"].isNull() ||
+        data["id"].type() != Json::stringValue ||
+        data["ip"].isNull() ||
+        data["ip"].type() != Json::stringValue)
+    {
+        ELOG_ERROR("Message format error");
+        return;
+    }
+
+    std::string id = data["id"].asString();
+    std::string ip = data["ip"].asString();
+    std::unique_lock<std::mutex> lock(agents_map_mux_);
+    agents_map_[id] = {id, ip, 0};
+    ELOG_INFO("EA: id-->%s found", id);
 }
