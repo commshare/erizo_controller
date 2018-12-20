@@ -31,14 +31,14 @@ public:
   void close();
 
 private:
-  bool handleEvent(const std::string &msg, std::string &reply);
+  int handleEvent(std::string ip, uint16_t port, const std::string &msg, std::string &reply);
   std::string handleToken(const Json::Value &root);
 
-  //rpc method
   void getErizoAgents(const Json::Value &root);
 
   //unimplement method
   ErizoAgent allocateAgent();
+  void getErizo(std::string room_id);
 
 private:
   std::shared_ptr<RedisHelper> redis_;
@@ -52,6 +52,9 @@ private:
 
   std::mutex agents_map_mux_;
   std::map<std::string, ErizoAgent> agents_map_;
+
+  std::mutex clients_map_mux_;
+  // std::map<std::string, Client> clients_map_;
 };
 
 #endif

@@ -43,7 +43,8 @@ class ClientHandler
   public:
     ClientHandler(T *server,
                   websocketpp::connection_hdl hdl,
-                  const std::function<void(T *, websocketpp::connection_hdl, const std::string &)> &callback = [](T *, websocketpp::connection_hdl, const std::string &) {});
+                  const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message,
+                  const std::function<void(ClientHandler<T> *)> &on_shutdown);
     ~ClientHandler();
 
     void setAddress(const std::string &ip, uint16_t port)
@@ -58,6 +59,11 @@ class ClientHandler
         port = port_;
     }
 
+    void goingToShutdown()
+    {
+        on_shutdown_(this);
+    }
+
   private:
     void onMessage(T *s, websocketpp::connection_hdl hdl, typename T::message_ptr msg);
     void handleMessage(const std::string &payload);
@@ -66,7 +72,8 @@ class ClientHandler
   private:
     T *server_;
     websocketpp::connection_hdl hdl_;
-    std::function<void(T *, websocketpp::connection_hdl, const std::string &)> callback_;
+    std::function<std::string(ClientHandler<T> *, const std::string &)> on_message_;
+    std::function<void(ClientHandler<T> *)> on_shutdown_;
     std::string ip_;
     uint16_t port_;
 };
@@ -77,9 +84,11 @@ DEFINE_LOGGER(ClientHandler<T>, "ClientHandler");
 template <typename T>
 ClientHandler<T>::ClientHandler(T *server,
                                 websocketpp::connection_hdl hdl,
-                                const std::function<void(T *, websocketpp::connection_hdl, const std::string &)> &callback) : server_(server),
-                                                                                                                              hdl_(hdl),
-                                                                                                                              callback_(callback)
+                                const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message,
+                                const std::function<void(ClientHandler<T> *)> &on_shutdown) : server_(server),
+                                                                                                     hdl_(hdl),
+                                                                                                     on_message_(on_message),
+                                                                                                     on_shutdown_(on_shutdown)
 {
 
     typename T::connection_ptr conn = server_->get_con_from_hdl(hdl_);
@@ -134,7 +143,32 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
     SOCKET_IO_MSG_TYPE msg_type = (SOCKET_IO_MSG_TYPE)(payload[1] - '0');
     if (msg_type != SOCKET_IO_MSG_TYPE::type_event)
         return;
-    callback_(server_, hdl_, payload);
+
+    int mid;
+    bool has_mid = false;
+
+    int pos = payload.find_first_of('[');
+    if (pos == payload.npos)
+        return;
+
+    if (pos > 2)
+    {
+        has_mid = true;
+        mid = std::stoi(payload.substr(2, pos));
+    }
+
+    std::string event = payload.substr(pos);
+    std::string msg = on_message_(this, event);
+    if (msg != "")
+    {
+        std::ostringstream oss;
+        oss << "43";
+        if (has_mid)
+            oss << mid;
+        oss << msg;
+        std::string reply = oss.str();
+        server_->send(hdl_, reply, websocketpp::frame::opcode::TEXT);
+    }
 }
 
 #endif

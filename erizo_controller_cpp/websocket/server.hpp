@@ -33,7 +33,8 @@ public:
 
   int init();
   void close();
-  void setEventCallback(const std::function<void(T *, websocketpp::connection_hdl, const std::string &)> &callback) { callback_ = callback; }
+  void setOnMessage(const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message) { on_message_ = on_message; }
+  void setOnShutdown(const std::function<void(ClientHandler<T> *)> &on_shutdown) { on_shutdown_ = on_shutdown; }
 
 private:
   void
@@ -49,7 +50,8 @@ private:
   std::unique_ptr<std::thread> thread_;
   boost::asio::io_service ios_;
   std::map<typename T::connection_ptr, std::shared_ptr<ClientHandler<T>>> clients_;
-  std::function<void(T *, websocketpp::connection_hdl, const std::string &)> callback_;
+  std::function<std::string(ClientHandler<T> *, const std::string &)> on_message_;
+  std::function<void(ClientHandler<T> *)> on_shutdown_;
   bool init_;
 };
 
@@ -167,7 +169,8 @@ void WSServer<T>::onConnectionOpen(T *s, websocketpp::connection_hdl hdl)
   }
 
   ELOG_INFO("New websocket connection:%#x", hdl.lock().get());
-  clients_[ptr] = std::make_shared<ClientHandler<T>>(s, hdl, callback_);
+  clients_[ptr] = std::make_shared<ClientHandler<T>>(s, hdl, on_message_, on_shutdown_);
+  clients_[ptr]->setAddress(ip, port);
   ELOG_INFO("SocketIO client num:%d", clients_.size());
 }
 
@@ -175,6 +178,7 @@ template <typename T>
 void WSServer<T>::onConnectionClose(T *s, websocketpp::connection_hdl hdl)
 {
   ELOG_INFO("Websocket connection:%#x going to shutdown", hdl.lock().get());
+  clients_[s->get_con_from_hdl(hdl)]->goingToShutdown();
   clients_.erase(s->get_con_from_hdl(hdl));
   ELOG_INFO("SocketIO client num:%d", clients_.size());
 }
