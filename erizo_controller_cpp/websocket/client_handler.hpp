@@ -76,6 +76,7 @@ class ClientHandler
     std::function<void(ClientHandler<T> *)> on_shutdown_;
     std::string ip_;
     uint16_t port_;
+    std::string client_id_;
 };
 
 template <typename T>
@@ -86,9 +87,12 @@ ClientHandler<T>::ClientHandler(T *server,
                                 websocketpp::connection_hdl hdl,
                                 const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message,
                                 const std::function<void(ClientHandler<T> *)> &on_shutdown) : server_(server),
-                                                                                                     hdl_(hdl),
-                                                                                                     on_message_(on_message),
-                                                                                                     on_shutdown_(on_shutdown)
+                                                                                              hdl_(hdl),
+                                                                                              on_message_(on_message),
+                                                                                              on_shutdown_(on_shutdown),
+                                                                                              ip_(""),
+                                                                                              port_(0),
+                                                                                              client_id_("")
 {
 
     typename T::connection_ptr conn = server_->get_con_from_hdl(hdl_);
@@ -159,7 +163,12 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
 
     std::string event = payload.substr(pos);
     std::string msg = on_message_(this, event);
-    if (msg != "")
+    if (!msg.compare(""))
+    {
+        // if message is null ,notify client disconnect
+        server_->send(hdl_, "41", websocketpp::frame::opcode::TEXT);
+    }
+    else
     {
         std::ostringstream oss;
         oss << "43";

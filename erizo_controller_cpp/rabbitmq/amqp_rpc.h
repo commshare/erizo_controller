@@ -49,7 +49,7 @@ class AMQPRPC
     AMQPRPC();
     ~AMQPRPC();
 
-    int init(const std::string &exchange, const std::string &exchange_type);
+    int init();
     void close();
     void addRPC(const std::string &exchange,
                 const std::string &queuename,

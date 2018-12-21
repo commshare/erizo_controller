@@ -19,7 +19,7 @@ AMQPRPC::~AMQPRPC()
 {
 }
 
-int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
+int AMQPRPC::init()
 {
     if (init_)
     {
@@ -59,13 +59,18 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
         return 1;
     }
 
-    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(exchange.c_str()),
-                          amqp_cstring_bytes(exchange_type.c_str()), 0, 0, 0, 0,
+    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
+                          amqp_cstring_bytes("direct"), 0, 1, 0, 0,
                           amqp_empty_table);
-    amqp_get_rpc_reply(conn_);
+    res = amqp_get_rpc_reply(conn_);
+    if (checkError(res))
+    {
+        ELOG_ERROR("Declaring uniquecast exchange failed");
+        return 1;
+    }
 
     amqp_queue_declare_ok_t *r = amqp_queue_declare(
-        conn_, 1, amqp_empty_bytes, 0, 0, 0, 1, amqp_empty_table);
+        conn_, 1, amqp_empty_bytes, 0, 0, 1, 1, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
@@ -81,7 +86,7 @@ int AMQPRPC::init(const std::string &exchange, const std::string &exchange_type)
     }
 
     reply_to_ = stringifyBytes(queuename);
-    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(exchange.c_str()),
+    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
                     queuename, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))

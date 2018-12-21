@@ -20,6 +20,8 @@
         "port": 5672,
         "username": "linmin",
         "password": "linmin",
-        "timeout": 1000
+        "timeout": 1000,
+        "uniquecast_exchange": "erizo_uniquecast_exchange",
+        "boardcast_exchange": "erizo_boardcast_exchange"
     }
 }

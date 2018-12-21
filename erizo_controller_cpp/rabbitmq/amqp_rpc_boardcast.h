@@ -30,12 +30,9 @@ public:
   AMQPRPCBoardcast();
   ~AMQPRPCBoardcast();
 
-  int init(const std::string &exchange,
-           const std::string &exchange_type,
-           const std::function<void(const std::string &msg)> &func);
+  int init(const std::function<void(const std::string &msg)> &func);
   void close();
-  void addRPC(const std::string &exchange,
-              const std::string &queuename,
+  void addRPC(const std::string &queuename,
               const std::string &binding_key,
               const Json::Value &data);
 

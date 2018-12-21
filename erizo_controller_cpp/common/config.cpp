@@ -26,6 +26,8 @@ Config::Config()
     rabbitmq_hostname_ = "localhost";
     rabbitmq_port_ = 5672;
     rabbitmq_timeout_ = 1000;
+    uniquecast_exchange_ = "erizo_uniquecast_exchange";
+    boardcast_exchange_ = "erizo_boardcast_exchange";
 }
 
 Config *Config::getInstance()
@@ -117,7 +119,11 @@ int Config::init(const std::string &config_file)
         rabbitmq["password"].isNull() ||
         rabbitmq["password"].type() != Json::stringValue ||
         rabbitmq["timeout"].isNull() ||
-        rabbitmq["timeout"].type() != Json::intValue)
+        rabbitmq["timeout"].type() != Json::intValue ||
+        rabbitmq["boardcast_exchange"].isNull() ||
+        rabbitmq["boardcast_exchange"].type() != Json::stringValue ||
+        rabbitmq["uniquecast_exchange"].isNull() ||
+        rabbitmq["uniquecast_exchange"].type() != Json::stringValue)
     {
         ELOG_ERROR("Rabbitmq config check error");
         return 1;
@@ -141,6 +147,8 @@ int Config::init(const std::string &config_file)
     rabbitmq_username_ = rabbitmq["username"].asString();
     rabbitmq_passwd_ = rabbitmq["password"].asString();
     rabbitmq_timeout_ = rabbitmq["timeout"].asInt();
+    uniquecast_exchange_ = rabbitmq["uniquecast_exchange"].asString();
+    boardcast_exchange_ = rabbitmq["boardcast_exchange"].asString();
     
     return 0;
 }

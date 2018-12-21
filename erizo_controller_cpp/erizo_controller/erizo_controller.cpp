@@ -27,19 +27,14 @@ int ErizoController::init()
         ELOG_ERROR("WebsocketTLS initialize failed");
         return 1;
     }
-    ws_tls_->setOnMessage([this](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
-        // std::string ip;
-        // uint16_t port;
-        // client_hdl->getAddress(ip, port);
 
-        // std::string reply;
-        // if (handleEvent(ip, port, msg, reply))
-        // {
-        //     ELOG_ERROR("@@@@@@@@@@@@ error @@@@@@@@@@@@@@");
-        //     return;
-        // }
-        // server->send(hdl, reply, websocketpp::frame::opcode::TEXT);
-        return "";
+    ws_tls_->setOnMessage([this](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
+        std::string reply_msg;
+        daptch(msg, reply_msg);
+        return reply_msg;
+    });
+    ws_tls_->setOnShutdown([this](ClientHandler<server_tls> *client_hdl) {
+
     });
 
     ws_ = std::make_shared<WSServer<server_plain>>();
@@ -48,31 +43,25 @@ int ErizoController::init()
         ELOG_ERROR("Websocket initialize failed");
         return 1;
     }
-    ws_->setOnMessage([this](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
-        // if (handleEvent(ip, port, msg, reply))
-        // {
 
-        //     return;
-        // }
-        ELOG_ERROR("%s", msg);
-        return "";
+    ws_->setOnMessage([this](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
+        std::string reply_msg;
+        daptch(msg, reply_msg);
+        return reply_msg;
     });
     ws_->setOnShutdown([this](ClientHandler<server_plain> *client_hdl) {
-        std::string ip;
-        uint16_t port;
-        client_hdl->getAddress(ip,port);
-   
+
     });
 
     amqp_ = std::make_shared<AMQPRPC>();
-    if (amqp_->init("rpcExchange", "direct"))
+    if (amqp_->init())
     {
         ELOG_ERROR("AMQP initialize failed");
         return 1;
     }
 
     amqp_boardcast_ = std::make_shared<AMQPRPCBoardcast>();
-    if (amqp_boardcast_->init("rpcExchange", "topic", [&, this](const std::string &msg) {
+    if (amqp_boardcast_->init([&, this](const std::string &msg) {
             Json::Value root;
             Json::Reader reader;
             if (!reader.parse(msg, root))
@@ -94,7 +83,7 @@ int ErizoController::init()
             std::string method = data["method"].asString();
             if (!method.compare("getErizoAgents"))
             {
-                //    getErizoAgents(root);
+                getErizoAgents(root);
             }
         }))
     {
@@ -109,8 +98,7 @@ int ErizoController::init()
             Json::Value msg;
             msg["method"] = "getErizoAgents";
 
-            amqp_boardcast_->addRPC("broadcastExchange",
-                                    "ErizoAgent",
+            amqp_boardcast_->addRPC("ErizoAgent",
                                     "ErizoAgent",
                                     msg);
 
@@ -151,90 +139,113 @@ void ErizoController::close()
     redis_ = nullptr;
 }
 
-// int ErizoController::handleEvent(std::string ip, uint16_t port, const std::string &msg, std::string &reply)
-// {
+int ErizoController::daptch(const std::string &msg, std::string &reply_msg)
+{
+    reply_msg = "";
 
-//     std::string event = msg.substr(pos);
+    Json::Value root;
+    Json::Reader reader;
+    if (!reader.parse(msg, root))
+    {
+        ELOG_ERROR("Message parse failed");
+        return 1;
+    }
 
-//     Json::Value root;
-//     Json::Reader reader;
-//     if (!reader.parse(event, root))
-//     {
-//         ELOG_ERROR("Event parse failed");
-//         return 1;
-//     }
+    if (root.type() != Json::arrayValue ||
+        root.size() != 2 ||
+        root[0].type() != Json::stringValue ||
+        root[1].type() != Json::objectValue)
+    {
+        ELOG_ERROR("Event format error");
+        return 1;
+    }
 
-//     if (root.isNull() ||
-//         root.type() != Json::arrayValue ||
-//         root.size() != 2 ||
-//         root[0].type() != Json::stringValue ||
-//         root[1].type() != Json::objectValue)
-//     {
-//         ELOG_ERROR("Event format error");
-//         return 1;
-//     }
+    Json::Value reply = Json::nullValue;
+    std::string event = root[0].asString();
+    Json::Value data = root[1];
+    if (!event.compare("token"))
+        reply = handleToken(data);
 
-//     std::string type = root[0].asString();
-//     if (!type.compare("token"))
-//     {
-//         reply_data = handleToken(root[1]);
-//     }
-//     return 0;
-// }
+    if (reply != Json::nullValue)
+    {
+        Json::FastWriter writer;
+        reply_msg = writer.write(reply);
+    }
 
-// std::string ErizoController::handleToken(const Json::Value &root)
-// {
-//     std::string client_id = Utils::getUUID();
-//     Json::Value data;
-//     data["id"] = "00000"; //room id
-//     data["clientId"] = client_id;
-//     data["streams"] = Json::arrayValue;
-//     data["singlePC"] = false;
-//     data["defaultVideoBW"] = 300;
-//     data["maxVideoBW"] = 300;
+    return 0;
+}
 
-//     Json::Value ice_data;
-//     ice_data["url"] = "stun:stun.l.google.com:19302";
+void ErizoController::getErizoAgents(const Json::Value &root)
+{
+    Json::Value data = root["data"];
+    if (data.isNull() ||
+        data.type() != Json::objectValue ||
+        data["id"].isNull() ||
+        data["id"].type() != Json::stringValue ||
+        data["ip"].isNull() ||
+        data["ip"].type() != Json::stringValue)
+    {
+        ELOG_ERROR("Message format error");
+        return;
+    }
 
-//     Json::Value ice;
-//     ice[0] = ice_data;
+    std::string id = data["id"].asString();
+    std::string ip = data["ip"].asString();
+    std::unique_lock<std::mutex> lock(agents_map_mux_);
+    agents_map_[id] = {id, ip, 0};
+}
 
-//     data["iceServers"] = ice;
+Json::Value ErizoController::handleToken(const Json::Value &root)
+{
 
-//     Json::Value reply;
-//     reply[0] = "success";
-//     reply[1] = data;
+    std::string client_id = Utils::getUUID();
+    std::string room_id = "test_room_id";
+    std::string agent_id = "";
+    {
+        std::unique_lock<std::mutex> lock(agents_map_mux_);
+        std::map<std::string, ErizoAgent> agents_map_;
+        for (auto it = agents_map_.begin(); it != agents_map_.end(); it++)
+        {
+            agent_id = it->second.id;
+            break;
+        }
+        if (!agent_id.compare(""))
+            return Json::nullValue;
+    }
 
-//     redisclient::RedisValue res = redis_->command("RPUSH", {"00000", client_id});
-//     if (res.isOk())
-//     {
-//         res = redis_->command("LRANGE", {"00000", "0", "-1"});
-//         if (res.isOk() && res.isArray())
-//             std::vector<redisclient::RedisValue> arr = res.getArray();
-//     }
-//     Json::FastWriter writer;
-//     return writer.write(reply);
-// }
+    Json::Value client_json;
+    client_json["id"] = client_id;
+    client_json["agent_id"] = agent_id;
+    client_json["room_id"] = room_id;
+    client_json["erizo_id"] = Json::nullValue;
+    Json::FastWriter writer;
+    std::string client = writer.write(client_json);
 
-// void ErizoController::getErizoAgents(const Json::Value &root)
-// {
-//     Json::Value data = root["data"];
-//     if (data.isNull() ||
-//         data.type() != Json::objectValue ||
-//         data["id"].isNull() ||
-//         data["id"].type() != Json::stringValue ||
-//         data["ip"].isNull() ||
-//         data["ip"].type() != Json::stringValue)
-//     {
-//         ELOG_ERROR("Message format error");
-//         return;
-//     }
+    redisclient::RedisValue res = redis_->command("SADD", {"clients", client_id, client});
+    if (!res.isOk())
+    {
+        ELOG_ERROR("Add to redis set[clients] failed");
+        return Json::nullValue;
+    }
 
-//     std::string id = data["id"].asString();
-//     std::string ip = data["ip"].asString();
-//     std::unique_lock<std::mutex> lock(agents_map_mux_);
-//     agents_map_[id] = {id, ip, 0};
-// }
+    Json::Value data;
+    data["id"] = room_id; //room id
+    data["clientId"] = client_id;
+    data["streams"] = Json::arrayValue;
+    data["singlePC"] = false;
+    data["defaultVideoBW"] = 300;
+    data["maxVideoBW"] = 300;
+    Json::Value ice_data;
+    ice_data["url"] = "stun:stun.l.google.com:19302";
+    Json::Value ice;
+    ice[0] = ice_data;
+    data["iceServers"] = ice;
+    Json::Value reply;
+    reply[0] = "success";
+    reply[1] = data;
+
+    return reply;
+}
 
 // //unimplement method
 // ErizoAgent ErizoController::allocateAgent()

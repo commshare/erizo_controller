@@ -38,6 +38,8 @@ public:
   std::string rabbitmq_hostname_;
   unsigned short rabbitmq_port_;
   int rabbitmq_timeout_;
+  std::string uniquecast_exchange_;
+  std::string boardcast_exchange_; 
 
 private:
   Config();

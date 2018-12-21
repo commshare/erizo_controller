@@ -8,10 +8,10 @@ DEFINE_LOGGER(AMQPRPCBoardcast, "AMQPRPCBoardcast");
 static Config *config = Config::getInstance();
 
 AMQPRPCBoardcast::AMQPRPCBoardcast() : init_(false),
-                           run_(false),
-                           conn_(nullptr),
-                           recv_thread_(nullptr),
-                           send_thread_(nullptr)
+                                       run_(false),
+                                       conn_(nullptr),
+                                       recv_thread_(nullptr),
+                                       send_thread_(nullptr)
 {
 }
 
@@ -38,10 +38,9 @@ int AMQPRPCBoardcast::callback(const std::string &exchange, const std::string &q
     return 0;
 }
 
-void AMQPRPCBoardcast::addRPC(const std::string &exchange,
-                        const std::string &queuename,
-                        const std::string &binding_key,
-                        const Json::Value &data)
+void AMQPRPCBoardcast::addRPC(const std::string &queuename,
+                              const std::string &binding_key,
+                              const Json::Value &data)
 {
     Json::Value root;
     root["replyTo"] = reply_to_;
@@ -50,7 +49,7 @@ void AMQPRPCBoardcast::addRPC(const std::string &exchange,
     std::string msg = writer.write(root);
 
     std::unique_lock<std::mutex> lock(mux_);
-    queue_.push({exchange, queuename, binding_key, msg});
+    queue_.push({Config::getInstance()->boardcast_exchange_, queuename, binding_key, msg});
     cond_.notify_one();
 }
 
@@ -99,7 +98,7 @@ int AMQPRPCBoardcast::checkError(amqp_rpc_reply_t x)
     return 1;
 }
 
-int AMQPRPCBoardcast::init(const std::string &exchange, const std::string &binding_key, const std::function<void(const std::string &msg)> &func)
+int AMQPRPCBoardcast::init(const std::function<void(const std::string &msg)> &func)
 {
     if (init_)
     {
@@ -139,8 +138,18 @@ int AMQPRPCBoardcast::init(const std::string &exchange, const std::string &bindi
         return 1;
     }
 
+    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(Config::getInstance()->boardcast_exchange_.c_str()),
+                          amqp_cstring_bytes("topic"), 0, 1, 0, 0,
+                          amqp_empty_table);
+    res = amqp_get_rpc_reply(conn_);
+    if (checkError(res))
+    {
+        ELOG_ERROR("Declaring boardcast exchange failed");
+        return 1;
+    }
+
     amqp_queue_declare_ok_t *r = amqp_queue_declare(
-        conn_, 1, amqp_empty_bytes, 0, 0, 0, 1, amqp_empty_table);
+        conn_, 1, amqp_empty_bytes, 0, 0, 1, 1, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
@@ -156,7 +165,7 @@ int AMQPRPCBoardcast::init(const std::string &exchange, const std::string &bindi
     }
 
     reply_to_ = stringifyBytes(queuename);
-    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(exchange.c_str()),
+    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
                     queuename, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
