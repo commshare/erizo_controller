@@ -64,15 +64,15 @@ int Config::init(const std::string &config_file)
     }
 
     Json::Value websocket = root["websocket"];
-    if (websocket.isNull() ||
+    if (!root.isMember("websocket") ||
         websocket.type() != Json::objectValue ||
-        websocket["port"].isNull() ||
+        !websocket.isMember("port") ||
         websocket["port"].type() != Json::intValue ||
-        websocket["ssl_key"].isNull() ||
+        !websocket.isMember("ssl_key") ||
         websocket["ssl_key"].type() != Json::stringValue ||
-        websocket["ssl_cert"].isNull() ||
+        !websocket.isMember("ssl_cert") ||
         websocket["ssl_cert"].type() != Json::stringValue ||
-        websocket["ssl_port"].isNull() ||
+        !websocket.isMember("ssl_port") ||
         websocket["ssl_port"].type() != Json::intValue)
     {
         ELOG_ERROR("Websocket config check error");
@@ -80,13 +80,13 @@ int Config::init(const std::string &config_file)
     }
 
     Json::Value mysql = root["mysql"];
-    if (mysql.isNull() ||
+    if (!root.isMember("mysql") ||
         mysql.type() != Json::objectValue ||
-        mysql["url"].isNull() ||
+        !mysql.isMember("url") ||
         mysql["url"].type() != Json::stringValue ||
-        mysql["username"].isNull() ||
+        !mysql.isMember("username") ||
         mysql["username"].type() != Json::stringValue ||
-        mysql["password"].isNull() ||
+        !mysql.isMember("password") ||
         mysql["password"].type() != Json::stringValue)
     {
         ELOG_ERROR("Mysql config check error");
@@ -94,13 +94,13 @@ int Config::init(const std::string &config_file)
     }
 
     Json::Value redis = root["redis"];
-    if (redis.isNull() ||
+    if (!root.isMember("redis") ||
         redis.type() != Json::objectValue ||
-        redis["ip"].isNull() ||
+        !redis.isMember("ip") ||
         redis["ip"].type() != Json::stringValue ||
-        redis["port"].isNull() ||
+        !redis.isMember("port") ||
         redis["port"].type() != Json::intValue ||
-        redis["password"].isNull() ||
+        !redis.isMember("password") ||
         redis["password"].type() != Json::stringValue)
     {
         ELOG_ERROR("Redis config check error");
@@ -108,21 +108,21 @@ int Config::init(const std::string &config_file)
     }
 
     Json::Value rabbitmq = root["rabbitmq"];
-    if (rabbitmq.isNull() ||
+    if (!root.isMember("rabbitmq") ||
         rabbitmq.type() != Json::objectValue ||
-        rabbitmq["host"].isNull() ||
+        !rabbitmq.isMember("host") ||
         rabbitmq["host"].type() != Json::stringValue ||
-        rabbitmq["port"].isNull() ||
+        !rabbitmq.isMember("port") ||
         rabbitmq["port"].type() != Json::intValue ||
-        rabbitmq["username"].isNull() ||
+        !rabbitmq.isMember("username") ||
         rabbitmq["username"].type() != Json::stringValue ||
-        rabbitmq["password"].isNull() ||
+        !rabbitmq.isMember("password") ||
         rabbitmq["password"].type() != Json::stringValue ||
-        rabbitmq["timeout"].isNull() ||
+        !rabbitmq.isMember("timeout") ||
         rabbitmq["timeout"].type() != Json::intValue ||
-        rabbitmq["boardcast_exchange"].isNull() ||
+        !rabbitmq.isMember("boardcast_exchange") ||
         rabbitmq["boardcast_exchange"].type() != Json::stringValue ||
-        rabbitmq["uniquecast_exchange"].isNull() ||
+        !rabbitmq.isMember("uniquecast_exchange") ||
         rabbitmq["uniquecast_exchange"].type() != Json::stringValue)
     {
         ELOG_ERROR("Rabbitmq config check error");
@@ -149,6 +149,6 @@ int Config::init(const std::string &config_file)
     rabbitmq_timeout_ = rabbitmq["timeout"].asInt();
     uniquecast_exchange_ = rabbitmq["uniquecast_exchange"].asString();
     boardcast_exchange_ = rabbitmq["boardcast_exchange"].asString();
-    
+
     return 0;
 }

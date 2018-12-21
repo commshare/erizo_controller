@@ -228,11 +228,11 @@ void AMQPRPC::handleCallback(const std::string &msg)
     if (!reader.parse(msg, root))
         return;
 
-    if (root["corrID"].isNull() ||
+    if (!root.isMember("corrID") ||
         root["corrID"].type() != Json::intValue ||
-        root["UUID"].isNull() ||
+        !root.isMember("UUID") ||
         root["UUID"].type() != Json::stringValue ||
-        root["data"].isNull() ||
+        !root.isMember("data") ||
         root["data"].type() != Json::objectValue)
         return;
 

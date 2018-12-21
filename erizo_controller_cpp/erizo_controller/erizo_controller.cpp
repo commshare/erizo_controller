@@ -71,9 +71,9 @@ int ErizoController::init()
             }
 
             Json::Value data = root["data"];
-            if (data.isNull() ||
+            if (!root.isMember("data") ||
                 data.type() != Json::objectValue ||
-                data["method"].isNull() ||
+                !data.isMember("method") ||
                 data["method"].type() != Json::stringValue)
             {
                 ELOG_ERROR("Boardcast message with not method");
@@ -116,7 +116,6 @@ int ErizoController::init()
                     it++;
                 }
             }
-            //      getErizo("");
             usleep(500000); //500ms
         }
     }));
@@ -178,11 +177,11 @@ int ErizoController::daptch(const std::string &msg, std::string &reply_msg)
 void ErizoController::getErizoAgents(const Json::Value &root)
 {
     Json::Value data = root["data"];
-    if (data.isNull() ||
+    if (!root.isMember("data") ||
         data.type() != Json::objectValue ||
-        data["id"].isNull() ||
+        !data.isMember("id") ||
         data["id"].type() != Json::stringValue ||
-        data["ip"].isNull() ||
+        !data.isMember("ip") ||
         data["ip"].type() != Json::stringValue)
     {
         ELOG_ERROR("Message format error");
@@ -227,7 +226,7 @@ Json::Value ErizoController::handleToken(const Json::Value &root)
         ELOG_ERROR("Add to redis set[clients] failed");
         return Json::nullValue;
     }
-
+    /*#######################*/
     Json::Value data;
     data["id"] = room_id; //room id
     data["clientId"] = client_id;
@@ -243,7 +242,7 @@ Json::Value ErizoController::handleToken(const Json::Value &root)
     Json::Value reply;
     reply[0] = "success";
     reply[1] = data;
-
+    /*#######################*/
     return reply;
 }
 
