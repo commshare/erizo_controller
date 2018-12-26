@@ -28,12 +28,12 @@ int ErizoController::init()
         return 1;
     }
 
-    ws_tls_->setOnMessage([this](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
+    ws_tls_->setOnMessage([&](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
         std::string reply_msg;
-        daptch(msg, reply_msg);
+        daptch(client_hdl, msg, reply_msg);
         return reply_msg;
     });
-    ws_tls_->setOnShutdown([this](ClientHandler<server_tls> *client_hdl) {
+    ws_tls_->setOnShutdown([&](ClientHandler<server_tls> *client_hdl) {
 
     });
 
@@ -44,12 +44,12 @@ int ErizoController::init()
         return 1;
     }
 
-    ws_->setOnMessage([this](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
+    ws_->setOnMessage([&](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
         std::string reply_msg;
-        daptch(msg, reply_msg);
+        daptch(client_hdl, msg, reply_msg);
         return reply_msg;
     });
-    ws_->setOnShutdown([this](ClientHandler<server_plain> *client_hdl) {
+    ws_->setOnShutdown([&](ClientHandler<server_plain> *client_hdl) {
 
     });
 
@@ -61,7 +61,7 @@ int ErizoController::init()
     }
 
     amqp_boardcast_ = std::make_shared<AMQPRPCBoardcast>();
-    if (amqp_boardcast_->init([&, this](const std::string &msg) {
+    if (amqp_boardcast_->init([&](const std::string &msg) {
             Json::Value root;
             Json::Reader reader;
             if (!reader.parse(msg, root))
@@ -91,8 +91,17 @@ int ErizoController::init()
         return 1;
     }
 
+    amqp_signaling_ = std::make_shared<AMQPRecv>();
+    if (amqp_signaling_->init([&](const std::string &msg) {
+            onSignalingMessage(msg);
+        }))
+    {
+        ELOG_ERROR("AMQPRecv initialize failed");
+        return 1;
+    }
+
     run_ = true;
-    keeplive_thread_ = std::unique_ptr<std::thread>(new std::thread([&, this]() {
+    keeplive_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
         while (run_)
         {
             Json::Value msg;
@@ -125,6 +134,18 @@ int ErizoController::init()
 
 void ErizoController::close()
 {
+    amqp_->close();
+    amqp_.reset();
+    amqp_ = nullptr;
+
+    amqp_boardcast_->close();
+    amqp_boardcast_.reset();
+    amqp_boardcast_ = nullptr;
+
+    amqp_signaling_->close();
+    amqp_signaling_.reset();
+    amqp_signaling_ = nullptr;
+
     ws_->close();
     ws_.reset();
     ws_ = nullptr;
@@ -138,40 +159,171 @@ void ErizoController::close()
     redis_ = nullptr;
 }
 
-int ErizoController::daptch(const std::string &msg, std::string &reply_msg)
+void ErizoController::onSignalingMessage(const std::string &msg)
 {
-    reply_msg = "";
 
     Json::Value root;
     Json::Reader reader;
     if (!reader.parse(msg, root))
     {
-        ELOG_ERROR("Message parse failed");
-        return 1;
+        ELOG_ERROR("Signaling message parse failed");
+        return;
     }
 
-    if (root.type() != Json::arrayValue ||
-        root.size() != 2 ||
-        root[0].type() != Json::stringValue ||
-        root[1].type() != Json::objectValue)
+    if (!root.isMember("data") ||
+        root["data"].type() != Json::objectValue)
     {
-        ELOG_ERROR("Event format error");
-        return 1;
+        ELOG_ERROR("Signaling message without data");
+        return;
     }
 
-    Json::Value reply = Json::nullValue;
-    std::string event = root[0].asString();
-    Json::Value data = root[1];
-    if (!event.compare("token"))
-        reply = handleToken(data);
-
-    if (reply != Json::nullValue)
+    Json::Value data = root["data"];
+    if (!data.isMember("type") ||
+        data["type"].type() != Json::stringValue ||
+        !data.isMember("streamId") ||
+        data["streamId"].type() != Json::stringValue)
     {
-        Json::FastWriter writer;
-        reply_msg = writer.write(reply);
+        ELOG_ERROR("Signaling message data format error");
+        return;
     }
 
-    return 0;
+    std::string stream_id = data["streamId"].asString();
+    std::string type = data["type"].asString();
+
+    Stream stream;
+    {
+        std::unique_lock<std::mutex> lock(streams_map_mux_);
+        if (streams_map_.find(stream_id) == streams_map_.end())
+        {
+            ELOG_ERROR("Stream %s not exist", stream_id);
+            return;
+        }
+        stream = streams_map_[stream_id];
+    }
+
+    Json::FastWriter writer;
+    std::vector<std::string> events;
+    if (!type.compare("started"))
+    {
+        {
+            Json::Value event;
+            event[0] = "signaling_message_erizo";
+            Json::Value mess;
+            mess["agentId"] = stream.agent_id;
+            mess["erizoId"] = stream.erizo_id;
+            mess["type"] = "initializing";
+            Json::Value event_data;
+            event_data["streamId"] = stream.id;
+            event_data["mess"] = mess;
+            event[1] = event_data;
+            events.push_back(writer.write(event));
+        }
+        {
+            Json::Value event;
+            event[0] = "signaling_message_erizo";
+            Json::Value mess;
+            mess["type"] = "started";
+            Json::Value event_data;
+            event_data["streamId"] = stream.id;
+            event_data["mess"] = mess;
+            event[1] = event_data;
+            events.push_back(writer.write(event));
+        }
+    }
+    else if (!type.compare("answer"))
+    {
+        if (!data.isMember("sdp") ||
+            data["sdp"].type() != Json::stringValue)
+        {
+            ELOG_ERROR("Wrong sdp answer");
+            return;
+        }
+
+        Json::Value event;
+        event[0] = "signaling_message_erizo";
+        Json::Value mess;
+        mess["type"] = "answer";
+        mess["sdp"] = data["sdp"].asString();
+        Json::Value event_data;
+        event_data["streamId"] = stream.id;
+        event_data["mess"] = mess;
+        event[1] = event_data;
+        events.push_back(writer.write(event));
+    }
+
+    if (stream.plain_client_hdl != nullptr)
+    {
+        ClientHandler<server_plain> *hdl = (ClientHandler<server_plain> *)stream.plain_client_hdl;
+        for (const std::string &event : events)
+            hdl->sendEvent(event);
+    }
+    else if (stream.ssl_client_hdl != nullptr)
+    {
+        ClientHandler<server_tls> *hdl = (ClientHandler<server_tls> *)stream.ssl_client_hdl;
+        for (const std::string &event : events)
+            hdl->sendEvent(event);
+    }
+    else
+    {
+        ELOG_ERROR("Client handler is null");
+        return;
+    }
+}
+
+void ErizoController::getErizo(const std::string &agent_id, const std::string &room_id, const std::function<void(const Json::Value &)> &func)
+{
+    std::string queuename = "ErizoAgent_" + agent_id;
+    Json::Value data;
+    data["method"] = "getErizo";
+    data["roomID"] = room_id;
+    amqp_->addRPC(Config::getInstance()->uniquecast_exchange_,
+                  queuename,
+                  queuename,
+                  data,
+                  func);
+}
+
+void ErizoController::processSignaling(const std::string &erizo_id,
+                                       const std::string &client_id,
+                                       const std::string &stream_id,
+                                       const Json::Value &msg,
+                                       const std::function<void(const Json::Value &)> &func)
+{
+    std::string queuename = "Erizo_" + erizo_id;
+    Json::Value data;
+    data["method"] = "processSignaling";
+    Json::Value args;
+    args[0] = client_id;
+    args[1] = stream_id;
+    args[2] = msg;
+    data["args"] = args;
+    amqp_->addRPC(Config::getInstance()->uniquecast_exchange_,
+                  queuename,
+                  queuename,
+                  data,
+                  func);
+}
+
+void ErizoController::addPublisher(const std::string &erizo_id,
+                                   const std::string &client_id,
+                                   const std::string &stream_id,
+                                   const std::string &label,
+                                   const std::function<void(const Json::Value &)> &func)
+{
+    std::string queuename = "Erizo_" + erizo_id;
+    Json::Value data;
+    data["method"] = "addPublisher";
+    Json::Value args;
+    args[0] = client_id;
+    args[1] = stream_id;
+    args[2] = label;
+    args[3] = amqp_signaling_->getReplyTo();
+    data["args"] = args;
+    amqp_->addRPC(Config::getInstance()->uniquecast_exchange_,
+                  queuename,
+                  queuename,
+                  data,
+                  func);
 }
 
 void ErizoController::getErizoAgents(const Json::Value &root)
@@ -194,42 +346,117 @@ void ErizoController::getErizoAgents(const Json::Value &root)
     agents_map_[id] = {id, ip, 0};
 }
 
-Json::Value ErizoController::handleToken(const Json::Value &root)
+template <typename T>
+int ErizoController::daptch(ClientHandler<T> *hdl, const std::string &msg, std::string &reply_msg)
 {
-
-    std::string client_id = Utils::getUUID();
-    std::string room_id = "test_room_id";
-    std::string agent_id = "";
+    Client client;
     {
-        std::unique_lock<std::mutex> lock(agents_map_mux_);
-        std::map<std::string, ErizoAgent> agents_map_;
-        for (auto it = agents_map_.begin(); it != agents_map_.end(); it++)
+        std::unique_lock<std::mutex> lock(clients_map_mux_);
+        auto it = clients_map_.find((void *)hdl);
+        if (it == clients_map_.end())
         {
-            agent_id = it->second.id;
+            std::string ip;
+            uint16_t port;
+            hdl->getAddress(ip, port);
+
+            client.id = Utils::getUUID();
+            client.ip = ip;
+            client.port = port;
+
+            printf("########### hdl:%#x\n", hdl);
+            if (std::is_same<T, server_plain>())
+            {
+                client.plain_client_hdl = hdl;
+            }
+            else
+            {
+                client.ssl_client_hdl = hdl;
+            }
+
+            clients_map_[(void *)hdl] = client;
+            ELOG_INFO("New client id:%s", client.id);
+        }
+        else
+        {
+            client = it->second;
+        }
+    }
+
+    reply_msg = "shutdown";
+    Json::Value root;
+    Json::Reader reader;
+    if (!reader.parse(msg, root))
+    {
+        ELOG_ERROR("Message parse failed");
+        return 1;
+    }
+
+    if (root.type() != Json::arrayValue ||
+        root.size() < 2 ||
+        root[0].type() != Json::stringValue ||
+        root[1].type() != Json::objectValue)
+    {
+        ELOG_ERROR("Event format error");
+        return 1;
+    }
+
+    Json::Value reply = Json::nullValue;
+    std::string event = root[0].asString();
+    Json::Value data = root[1];
+    if (!event.compare("token"))
+    {
+        reply = handleToken(client, data);
+    }
+    else if (!event.compare("publish"))
+    {
+        reply = handlePublish(client, data);
+    }
+    else if (!event.compare("signaling_message"))
+    {
+        handleSignaling(client, data);
+        reply_msg = "notreply";
+    }
+
+    if (reply != Json::nullValue)
+    {
+        Json::FastWriter writer;
+        reply_msg = writer.write(reply);
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(clients_map_mux_);
+        clients_map_[(void *)hdl] = client;
+    }
+
+    return 0;
+}
+
+Json::Value ErizoController::handleToken(Client &client, const Json::Value &root)
+{
+    //#############################################################################
+    //TODO 根据client的ip分配agent,agent列表从redis获得
+    {
+        client.room_id = "test_room_id";
+        std::unique_lock<std::mutex> lock(agents_map_mux_);
+        auto it = agents_map_.begin();
+        for (; it != agents_map_.end(); it++)
+        {
+            client.agent_id = it->second.id;
+            client.agent_ip = it->second.ip;
             break;
         }
-        if (!agent_id.compare(""))
+
+        if (it == agents_map_.end())
+        {
+            ELOG_WARN("Not agent online");
             return Json::nullValue;
+        }
     }
+    //#############################################################################
 
-    Json::Value client_json;
-    client_json["id"] = client_id;
-    client_json["agent_id"] = agent_id;
-    client_json["room_id"] = room_id;
-    client_json["erizo_id"] = Json::nullValue;
-    Json::FastWriter writer;
-    std::string client = writer.write(client_json);
-
-    redisclient::RedisValue res = redis_->command("SADD", {"clients", client_id, client});
-    if (!res.isOk())
-    {
-        ELOG_ERROR("Add to redis set[clients] failed");
-        return Json::nullValue;
-    }
-    /*#######################*/
     Json::Value data;
-    data["id"] = room_id; //room id
-    data["clientId"] = client_id;
+    data["id"] = client.room_id; //room id
+    data["clientId"] = client.id;
     data["streams"] = Json::arrayValue;
     data["singlePC"] = false;
     data["defaultVideoBW"] = 300;
@@ -242,33 +469,131 @@ Json::Value ErizoController::handleToken(const Json::Value &root)
     Json::Value reply;
     reply[0] = "success";
     reply[1] = data;
-    /*#######################*/
     return reply;
 }
 
-// //unimplement method
-// ErizoAgent ErizoController::allocateAgent()
-// {
-//     return {};
-// }
+Json::Value ErizoController::handlePublish(Client &client, const Json::Value &root)
+{
+    int ret;
+    std::atomic<bool> callback_done(false);
 
-// void ErizoController::getErizo(std::string room_id)
-// {
-//     //  ErizoAgent agent = allocateAgent();
-//     std::unique_lock<std::mutex> lock(agents_map_mux_);
-//     for (auto it = agents_map_.begin(); it != agents_map_.end(); it++)
-//     {
-//         std::string queuename = "ErizoAgent_" + it->second.id;
+    if (!root.isMember("label") ||
+        root["label"].type() != Json::stringValue)
+    {
+        ELOG_ERROR("Publish data format error");
+        return Json::nullValue;
+    }
 
-//         Json::Value data;
-//         data["roomID"] = "testestestest";
-//         data["method"] = "getErizo";
-//         amqp_->addRPC("rpcExchange",
-//                       queuename,
-//                       queuename,
-//                       data,
-//                       [&, this](const Json::Value &root) {
-//                           printf("############################\n");
-//                       });
-//     }
-// }
+    std::string label = root["label"].asString();
+
+    getErizo(client.agent_id, client.room_id, [&](const Json::Value &root) {
+        if (root.type() == Json::nullValue)
+        {
+            ret = 1;
+            callback_done = true;
+            ELOG_ERROR("getErizo timeout");
+            return;
+        }
+        if (!root.isMember("erizo_id") ||
+            root["erizo_id"].type() != Json::stringValue)
+        {
+            ret = 1;
+            callback_done = true;
+            ELOG_ERROR("getErizo data format error");
+            return;
+        }
+        client.erizo_id = root["erizo_id"].asString();
+        ret = 0;
+        callback_done = true;
+        ELOG_INFO("Client get erizo %s", client.erizo_id);
+    });
+
+    while (!callback_done)
+        usleep(0);
+
+    if (ret)
+    {
+        ELOG_ERROR("Client %s get erizo failed", client.id);
+        return Json::nullValue;
+    }
+
+    Publisher publisher;
+    publisher.id = Utils::getStreamID();
+    publisher.erizo_id = client.erizo_id;
+    publisher.agent_id = client.agent_id;
+    publisher.plain_client_hdl = client.plain_client_hdl;
+    publisher.ssl_client_hdl = client.ssl_client_hdl;
+    {
+        std::unique_lock<std::mutex>(streams_map_mux_);
+        streams_map_[publisher.id] = publisher;
+    }
+
+    callback_done = false;
+    addPublisher(publisher.erizo_id, client.id, publisher.id, label, [&](const Json::Value &root) {
+        if (root.type() == Json::nullValue)
+        {
+            ret = 1;
+            callback_done = true;
+            ELOG_ERROR("addPublisher timeout");
+            return;
+        }
+
+        if (!root.isMember("ret") ||
+            root["ret"].type() != Json::intValue)
+        {
+            ret = 1;
+            callback_done = true;
+            ELOG_ERROR("Erizo reply message error");
+            return;
+        }
+
+        ret = root["ret"].asInt();
+        callback_done = true;
+    });
+
+    while (!callback_done)
+        usleep(0);
+
+    if (ret)
+    {
+        ELOG_ERROR("Client %s addPublisher failed", client.id);
+        return Json::nullValue;
+    }
+
+    if (redis_->addPublisher(client.room_id, publisher))
+    {
+        ELOG_ERROR("Add publisher to redis failed");
+        return Json::nullValue;
+    }
+
+    Json::Value reply;
+    reply[0] = publisher.id;
+    reply[1] = publisher.erizo_id;
+    return reply;
+}
+
+void ErizoController::handleSignaling(Client &client, const Json::Value &root)
+{
+    if (!root.isMember("streamId") ||
+        root["streamId"].type() != Json::stringValue ||
+        !root.isMember("msg") ||
+        root["msg"].type() != Json::objectValue)
+    {
+        ELOG_ERROR("Signaling data format error");
+        return;
+    }
+
+    processSignaling(client.erizo_id, client.id, root["streamId"].asString(), root["msg"], [&](const Json::Value &root) {
+        if (!root.isMember("ret") ||
+            root["ret"].type() != Json::intValue)
+        {
+            ELOG_ERROR("############# failed");
+            return;
+        }
+        int ret = root["ret"].asInt();
+        if (ret != 0)
+        {
+            ELOG_ERROR("error occ");
+        }
+    });
+}

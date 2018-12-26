@@ -11,6 +11,9 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/regex.hpp>
 
+#include <stdlib.h>
+#include <time.h>
+
 class Utils
 {
   public:
@@ -60,6 +63,14 @@ class Utils
         auto now = std::chrono::steady_clock::now();
         auto now_since_epoch = now.time_since_epoch();
         return std::chrono::duration_cast<std::chrono::milliseconds>(now_since_epoch).count();
+    }
+
+    static std::string getStreamID()
+    {
+        std::stringstream oss;
+        for (int i = 0; i < 18; i++)
+            oss << rand() % 10;
+        return oss.str();
     }
 };
 

@@ -1,6 +1,10 @@
 #ifndef WEBSOCKET_CLIENT_HANDLER_HPP
 #define WEBSOCKET_CLIENT_HANDLER_HPP
 
+#include <thread>
+#include <mutex>
+#include <memory>
+
 #include <websocketpp/config/asio.hpp>
 #include <websocketpp/server.hpp>
 #include <json/json.h>
@@ -47,6 +51,8 @@ class ClientHandler
                   const std::function<void(ClientHandler<T> *)> &on_shutdown);
     ~ClientHandler();
 
+    void sendEvent(const std::string &msg);
+
     void setAddress(const std::string &ip, uint16_t port)
     {
         ip_ = ip;
@@ -76,7 +82,8 @@ class ClientHandler
     std::function<void(ClientHandler<T> *)> on_shutdown_;
     std::string ip_;
     uint16_t port_;
-    std::string client_id_;
+
+    std::string test;
 };
 
 template <typename T>
@@ -91,8 +98,8 @@ ClientHandler<T>::ClientHandler(T *server,
                                                                                               on_message_(on_message),
                                                                                               on_shutdown_(on_shutdown),
                                                                                               ip_(""),
-                                                                                              port_(0),
-                                                                                              client_id_("")
+                                                                                              port_(0) //,
+                                                                                                       // client_id_("")
 {
 
     typename T::connection_ptr conn = server_->get_con_from_hdl(hdl_);
@@ -151,7 +158,7 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
     int mid;
     bool has_mid = false;
 
-    int pos = payload.find_first_of('[');
+    size_t pos = payload.find_first_of('[');
     if (pos == payload.npos)
         return;
 
@@ -163,10 +170,16 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
 
     std::string event = payload.substr(pos);
     std::string msg = on_message_(this, event);
-    if (!msg.compare(""))
+    if (!msg.compare("shutdown"))
     {
-        // if message is null ,notify client disconnect
+        // if message is null,notify client disconnect
         server_->send(hdl_, "41", websocketpp::frame::opcode::TEXT);
+        return;
+    }
+    else if (!msg.compare("notreply"))
+    {
+        // do nothing,just return
+        return;
     }
     else
     {
@@ -175,9 +188,17 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
         if (has_mid)
             oss << mid;
         oss << msg;
-        std::string reply = oss.str();
-        server_->send(hdl_, reply, websocketpp::frame::opcode::TEXT);
+        server_->send(hdl_, oss.str(), websocketpp::frame::opcode::TEXT);
     }
+}
+
+template <typename T>
+void ClientHandler<T>::sendEvent(const std::string &msg)
+{
+    std::ostringstream oss;
+    oss << "42";
+    oss << msg;
+    server_->send(hdl_, oss.str(), websocketpp::frame::opcode::TEXT);
 }
 
 #endif

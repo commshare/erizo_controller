@@ -15,6 +15,7 @@ include_directories("${ERIZO_CONTROLLER_CPP_SOURCE_DIR}" "${LIBDEPS_INCLUDE}")
 link_directories("${LIBDEPS_LIBARAYS}")
 
 file(GLOB_RECURSE ERIZO_CONTROLLER_CPP_SOURCES "${ERIZO_CONTROLLER_CPP_SOURCE_DIR}/*.h" 
+                                               "${ERIZO_CONTROLLER_CPP_SOURCE_DIR}/*.hpp"
                                                "${ERIZO_CONTROLLER_CPP_SOURCE_DIR}/*.c" 
                                                "${ERIZO_CONTROLLER_CPP_SOURCE_DIR}/*.cpp" 
                                                "${ERIZO_CONTROLLER_CPP_SOURCE_DIR}/*.cc")

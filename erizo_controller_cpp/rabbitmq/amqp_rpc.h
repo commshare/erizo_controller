@@ -32,7 +32,6 @@ class AMQPRPC
     {
         std::atomic<uint64_t> ts;
         Json::Value data;
-        std::string uuid;
         std::condition_variable cond;
         std::mutex mux;
 
@@ -40,7 +39,6 @@ class AMQPRPC
         {
             ts = 0;
             data = Json::nullValue;
-            uuid = "";
         }
         AMQPCallback(const AMQPCallback &a) {}
     };

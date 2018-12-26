@@ -1,6 +1,6 @@
 cd ./build
 cmake ../
-make 
+make -j4 
 make install 
 cd ../bin/
 cp ../log4cxx.properties ./

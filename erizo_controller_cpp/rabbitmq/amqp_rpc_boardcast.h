@@ -1,5 +1,5 @@
-#ifndef AMQP_HELPER_H
-#define AMQP_HELPER_H
+#ifndef AMQP_RPC_BOARDCAST_H
+#define AMQP_RPC_BOARDCAST_H
 
 #include <amqp.h>
 #include <amqp_tcp_socket.h>

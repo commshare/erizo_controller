@@ -168,7 +168,7 @@ int AMQPRPC::init()
                     int dur = (int)(now - cb.ts);
                     if (dur > Config::getInstance()->rabbitmq_timeout_)
                     {
-                        ELOG_WARN("Rabbitmq rpc callback %s timeout", cb.uuid);
+                        ELOG_WARN("Rabbitmq rpc callback timeout");
                         cb.data = Json::nullValue;
                         cb.cond.notify_one();
                         cb.ts = 0;
@@ -230,14 +230,11 @@ void AMQPRPC::handleCallback(const std::string &msg)
 
     if (!root.isMember("corrID") ||
         root["corrID"].type() != Json::intValue ||
-        !root.isMember("UUID") ||
-        root["UUID"].type() != Json::stringValue ||
         !root.isMember("data") ||
         root["data"].type() != Json::objectValue)
         return;
 
     int corrid = root["corrID"].asInt();
-    std::string uuid = root["UUID"].asString();
     Json::Value data = root["data"];
 
     if (corrid < 0 || corrid > kQueueSize)
@@ -245,11 +242,8 @@ void AMQPRPC::handleCallback(const std::string &msg)
 
     std::unique_ptr<std::mutex>(cb_queue_mux_);
     AMQPCallback &cb = cb_queue_[corrid];
-    if (!cb.uuid.compare(uuid))
-    {
-        cb.data = data;
-        cb.cond.notify_one();
-    }
+    cb.data = data;
+    cb.cond.notify_one();
 }
 
 void AMQPRPC::addRPC(const std::string &exchange,
@@ -258,30 +252,30 @@ void AMQPRPC::addRPC(const std::string &exchange,
                      const Json::Value &data,
                      const std::function<void(const Json::Value &)> &func)
 {
-    std::string uuid = Utils::getUUID();
     int corrid = index_ % kQueueSize;
     index_++;
     index_ = index_ % kQueueSize;
 
-    std::thread([&, this, func, corrid, uuid]() {
+    std::thread([&, this, func, corrid]() {
         AMQPCallback &cb = cb_queue_[corrid];
         std::unique_lock<std::mutex> lock(cb.mux);
         if (cb.ts == 0)
         {
             cb.ts = Utils::getCurrentMs();
             cb.data = Json::nullValue;
-            cb.uuid = uuid;
             cb.cond.wait(lock);
             func(cb.data);
             cb.ts = 0;
         }
-    })
-        .detach();
+        else
+        {
+            func(Json::nullValue);
+        }
+    }).detach();
 
     Json::Value root;
     root["corrID"] = corrid;
     root["replyTo"] = reply_to_;
-    root["UUID"] = uuid;
     root["data"] = data;
     Json::FastWriter writer;
     std::string msg = writer.write(root);

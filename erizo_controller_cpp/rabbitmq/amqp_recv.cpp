@@ -1,59 +1,23 @@
-#include "amqp_rpc_boardcast.h"
+#include "amqp_recv.h"
 
 #include <unistd.h>
 
 #include "common/config.h"
 
-DEFINE_LOGGER(AMQPRPCBoardcast, "AMQPRPCBoardcast");
+DEFINE_LOGGER(AMQPRecv, "AMQPRecv");
 static Config *config = Config::getInstance();
 
-AMQPRPCBoardcast::AMQPRPCBoardcast() : init_(false),
+AMQPRecv::AMQPRecv() : init_(false),
                                        run_(false),
                                        conn_(nullptr),
-                                       recv_thread_(nullptr),
-                                       send_thread_(nullptr)
+                                       recv_thread_(nullptr)
 {
 }
 
-AMQPRPCBoardcast::~AMQPRPCBoardcast() {}
+AMQPRecv::~AMQPRecv() {}
 
-int AMQPRPCBoardcast::callback(const std::string &exchange, const std::string &queuename, const std::string &binding_key, const std::string &send_msg)
-{
-    amqp_basic_properties_t props;
-    props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG;
-    props.content_type = amqp_cstring_bytes("application/json");
-    props.delivery_mode = 2;
-    props.correlation_id = amqp_cstring_bytes("1");
-    props.reply_to = amqp_bytes_malloc_dup(amqp_cstring_bytes(queuename.c_str()));
-    if (props.reply_to.bytes == NULL)
-    {
-        ELOG_ERROR("Out of memory while copying queue name");
-        return 1;
-    }
 
-    amqp_basic_publish(conn_, 1, amqp_cstring_bytes(exchange.c_str()),
-                       amqp_cstring_bytes(binding_key.c_str()), 0, 0,
-                       &props, amqp_cstring_bytes(send_msg.c_str()));
-    amqp_bytes_free(props.reply_to);
-    return 0;
-}
-
-void AMQPRPCBoardcast::addRPC(const std::string &queuename,
-                              const std::string &binding_key,
-                              const Json::Value &data)
-{
-    Json::Value root;
-    root["replyTo"] = reply_to_;
-    root["data"] = data;
-    Json::FastWriter writer;
-    std::string msg = writer.write(root);
-
-    std::unique_lock<std::mutex> lock(mux_);
-    queue_.push({Config::getInstance()->boardcast_exchange_, queuename, binding_key, msg});
-    cond_.notify_one();
-}
-
-int AMQPRPCBoardcast::checkError(amqp_rpc_reply_t x)
+int AMQPRecv::checkError(amqp_rpc_reply_t x)
 {
     switch (x.reply_type)
     {
@@ -98,11 +62,11 @@ int AMQPRPCBoardcast::checkError(amqp_rpc_reply_t x)
     return 1;
 }
 
-int AMQPRPCBoardcast::init(const std::function<void(const std::string &msg)> &func)
+int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
 {
     if (init_)
     {
-        ELOG_WARN("AMQPRPCBoardcast duplicate initialize,just return!!!");
+        ELOG_WARN("AMQPHepler duplicate initialize,just return!!!");
         return 0;
     }
 
@@ -135,16 +99,6 @@ int AMQPRPCBoardcast::init(const std::function<void(const std::string &msg)> &fu
     if (checkError(res))
     {
         ELOG_ERROR("Opening channel failed");
-        return 1;
-    }
-
-    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(Config::getInstance()->boardcast_exchange_.c_str()),
-                          amqp_cstring_bytes("topic"), 0, 1, 0, 0,
-                          amqp_empty_table);
-    res = amqp_get_rpc_reply(conn_);
-    if (checkError(res))
-    {
-        ELOG_ERROR("Declaring boardcast exchange failed");
         return 1;
     }
 
@@ -210,58 +164,33 @@ int AMQPRPCBoardcast::init(const std::function<void(const std::string &msg)> &fu
         }
     }));
 
-    send_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
-        while (run_)
-        {
-            std::unique_lock<std::mutex> lock(mux_);
-
-            if (!queue_.empty())
-            {
-                AMQPData data = queue_.front();
-                queue_.pop();
-                callback(data.exchange, data.queuename, data.binding_key, data.msg);
-            }
-            else
-            {
-                cond_.wait(lock);
-            }
-        }
-    }));
-
     init_ = true;
 
     return 0;
 }
 
-void AMQPRPCBoardcast::close()
+void AMQPRecv::close()
 {
     if (!init_)
     {
-        ELOG_WARN("AMQPRPCBoardcast didn't initialize,can't close!!!");
+        ELOG_WARN("AMQPRecv didn't initialize,can't close!!!");
         return;
     }
 
     run_ = false;
     recv_thread_->join();
-    cond_.notify_all();
-    send_thread_->join();
 
     amqp_channel_close(conn_, 1, AMQP_REPLY_SUCCESS);
     amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
     amqp_destroy_connection(conn_);
 
-    while (!queue_.empty())
-        queue_.pop();
-
     init_ = false;
     conn_ = nullptr;
     recv_thread_.reset();
     recv_thread_ = nullptr;
-    send_thread_.reset();
-    send_thread_ = nullptr;
 }
 
-std::string AMQPRPCBoardcast::stringifyBytes(amqp_bytes_t bytes)
+std::string AMQPRecv::stringifyBytes(amqp_bytes_t bytes)
 {
     std::ostringstream oss;
     uint8_t *data = (uint8_t *)bytes.bytes;
