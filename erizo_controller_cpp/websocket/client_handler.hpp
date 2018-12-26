@@ -10,11 +10,16 @@
 #include <json/json.h>
 #include <logger.h>
 
+#include "model/client.h"
 #include "common/utils.h"
 
 using websocketpp::lib::bind;
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
+
+typedef websocketpp::server<websocketpp::config::asio> server_plain;
+typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
+typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
 
 enum SOCKET_IO_FRAME_TYPE
 {
@@ -70,6 +75,11 @@ class ClientHandler
         on_shutdown_(this);
     }
 
+    Client &getClient()
+    {
+        return client_;
+    }
+
   private:
     void onMessage(T *s, websocketpp::connection_hdl hdl, typename T::message_ptr msg);
     void handleMessage(const std::string &payload);
@@ -82,8 +92,7 @@ class ClientHandler
     std::function<void(ClientHandler<T> *)> on_shutdown_;
     std::string ip_;
     uint16_t port_;
-
-    std::string test;
+    Client client_;
 };
 
 template <typename T>
@@ -98,8 +107,7 @@ ClientHandler<T>::ClientHandler(T *server,
                                                                                               on_message_(on_message),
                                                                                               on_shutdown_(on_shutdown),
                                                                                               ip_(""),
-                                                                                              port_(0) //,
-                                                                                                       // client_id_("")
+                                                                                              port_(0)
 {
 
     typename T::connection_ptr conn = server_->get_con_from_hdl(hdl_);
@@ -115,6 +123,14 @@ ClientHandler<T>::ClientHandler(T *server,
     std::string msg = "0" + writer.write(handshake);
     server->send(hdl, msg, websocketpp::frame::opcode::TEXT);
     server->send(hdl, "40", websocketpp::frame::opcode::TEXT);
+
+    client_.id = Utils::getUUID();
+    client_.ip = ip_;
+    client_.port = port_;
+    if (std::is_same<server_plain, T>())
+        client_.plain_client_hdl = this;
+    else if (std::is_same<server_tls, T>())
+        client_.ssl_client_hdl = this;
 }
 
 template <typename T>
@@ -172,13 +188,11 @@ void ClientHandler<T>::handleMessage(const std::string &payload)
     std::string msg = on_message_(this, event);
     if (!msg.compare("shutdown"))
     {
-        // if message is null,notify client disconnect
         server_->send(hdl_, "41", websocketpp::frame::opcode::TEXT);
         return;
     }
     else if (!msg.compare("notreply"))
     {
-        // do nothing,just return
         return;
     }
     else

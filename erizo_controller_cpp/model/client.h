@@ -2,13 +2,10 @@
 #define CLIENT_H
 
 #include <string>
-#include <vector>
-#include <memory>
+#include <map>
 
 #include "publisher.h"
 #include "subscriber.h"
-#include "websocket/server.hpp"
-#include "websocket/client_handler.hpp"
 
 struct Client
 {
@@ -23,8 +20,8 @@ struct Client
     void *plain_client_hdl;
     void *ssl_client_hdl;
 
-    std::vector<Publisher> publishers;
-    std::vector<Subscriber> subscriber;
+    std::map<std::string, Publisher> publishers;
+    std::map<std::string, Subscriber> subscribers;
 
     Client()
     {
@@ -38,6 +35,24 @@ struct Client
         agent_port = 0;
         plain_client_hdl = nullptr;
         ssl_client_hdl = nullptr;
+    }
+
+    int getStream(const std::string &stream_id, Stream &stream)
+    {
+        auto publishs_it = publishers.find(stream_id);
+        if (publishs_it != publishers.end())
+        {
+            stream = publishs_it->second;
+            return 0;
+        }
+
+        auto subscribers_it = subscribers.find(stream_id);
+        if (subscribers_it != subscribers.end())
+        {
+            stream = subscribers_it->second;
+            return 0;
+        }
+        return 1;
     }
 };
 

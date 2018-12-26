@@ -5,6 +5,7 @@
 #include <memory>
 #include <functional>
 #include <type_traits>
+#include <mutex>
 
 #include <websocketpp/config/asio.hpp>
 #include <websocketpp/server.hpp>
@@ -13,14 +14,6 @@
 #include "common/utils.h"
 #include "common/config.h"
 #include "client_handler.hpp"
-
-typedef websocketpp::server<websocketpp::config::asio> server_plain;
-typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
-typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
-
-using websocketpp::lib::bind;
-using websocketpp::lib::placeholders::_1;
-using websocketpp::lib::placeholders::_2;
 
 template <typename T>
 class WSServer
@@ -35,15 +28,24 @@ public:
   void close();
   void setOnMessage(const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message) { on_message_ = on_message; }
   void setOnShutdown(const std::function<void(ClientHandler<T> *)> &on_shutdown) { on_shutdown_ = on_shutdown; }
+  std::shared_ptr<ClientHandler<T>> getClient(const std::string &client_id)
+  {
+    auto it = std::find_if(clients_.begin(), clients_.end(),
+                           [&](const std::pair<typename T::connection_ptr, std::shared_ptr<ClientHandler<T>>> &val) -> bool {
+                             Client &client = val.second->getClient();
+                             if (!client.id.compare(client_id))
+                               return true;
+                             return false;
+                           });
+    if (it != clients_.end())
+      return it->second;
+    return nullptr;
+  }
 
 private:
-  void
-  onConnectionOpen(T *s, websocketpp::connection_hdl hdl);
-
+  void onConnectionOpen(T *s, websocketpp::connection_hdl hdl);
   void onConnectionClose(T *s, websocketpp::connection_hdl hdl);
-
   void onMessage(T *s, websocketpp::connection_hdl hdl, typename T::message_ptr msg);
-
   context_ptr onTLSInit(websocketpp::connection_hdl hdl);
 
 private:
