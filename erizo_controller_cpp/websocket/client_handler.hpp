@@ -127,10 +127,6 @@ ClientHandler<T>::ClientHandler(T *server,
     client_.id = Utils::getUUID();
     client_.ip = ip_;
     client_.port = port_;
-    if (std::is_same<server_plain, T>())
-        client_.plain_client_hdl = this;
-    else if (std::is_same<server_tls, T>())
-        client_.ssl_client_hdl = this;
 }
 
 template <typename T>

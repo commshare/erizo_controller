@@ -17,9 +17,6 @@ struct Client
     uint16_t port;
     std::string agent_ip;
     uint16_t agent_port;
-    void *plain_client_hdl;
-    void *ssl_client_hdl;
-
     std::map<std::string, Publisher> publishers;
     std::map<std::string, Subscriber> subscribers;
 
@@ -33,8 +30,6 @@ struct Client
         port = 0;
         agent_ip = "";
         agent_port = 0;
-        plain_client_hdl = nullptr;
-        ssl_client_hdl = nullptr;
     }
 
     int getStream(const std::string &stream_id, Stream &stream)

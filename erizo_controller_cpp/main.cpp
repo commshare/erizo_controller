@@ -1,4 +1,4 @@
-#include "erizo_controller/erizo_controller.h"
+#include "core/erizo_controller.h"
 
 int main()
 {

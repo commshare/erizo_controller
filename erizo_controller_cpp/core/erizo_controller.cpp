@@ -6,7 +6,8 @@ ErizoController::ErizoController() : redis_(nullptr),
                                      ws_tls_(nullptr),
                                      ws_(nullptr),
                                      amqp_(nullptr),
-                                     amqp_signaling_(nullptr)
+                                     amqp_signaling_(nullptr),
+                                     init_(false)
 {
 }
 
@@ -16,6 +17,9 @@ ErizoController::~ErizoController()
 
 int ErizoController::init()
 {
+    if (init_)
+        return 0;
+
     redis_ = std::make_shared<RedisHelper>();
     if (redis_->init())
     {
@@ -31,9 +35,7 @@ int ErizoController::init()
     }
 
     ws_tls_->setOnMessage([&](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
-        std::string reply_msg;
-        daptch(client_hdl, msg, reply_msg);
-        return reply_msg;
+        return onMessage(client_hdl, msg);
     });
     ws_tls_->setOnShutdown([&](ClientHandler<server_tls> *client_hdl) {
 
@@ -47,9 +49,7 @@ int ErizoController::init()
     }
 
     ws_->setOnMessage([&](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
-        std::string reply_msg;
-        daptch(client_hdl, msg, reply_msg);
-        return reply_msg;
+        return onMessage(client_hdl, msg);
     });
     ws_->setOnShutdown([&](ClientHandler<server_plain> *client_hdl) {
 
@@ -71,11 +71,14 @@ int ErizoController::init()
         return 1;
     }
 
+    init_ = true;
     return 0;
 }
 
 void ErizoController::close()
 {
+    if (!init_)
+        return;
     redis_->close();
     redis_.reset();
     redis_ = nullptr;
@@ -95,6 +98,8 @@ void ErizoController::close()
     amqp_signaling_->close();
     amqp_signaling_.reset();
     amqp_signaling_ = nullptr;
+    
+    init_ = false;
 }
 
 void ErizoController::onSignalingMessage(const std::string &msg)
@@ -185,8 +190,6 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         event[1] = event_data;
         events.push_back(writer.write(event));
     }
-
-
 
     std::shared_ptr<ClientHandler<server_plain>> plain_client_hdl = ws_->getClient(client_id);
     if (plain_client_hdl != nullptr)
@@ -332,17 +335,20 @@ int ErizoController::processSignaling(const std::string &erizo_id,
 }
 
 template <typename T>
-int ErizoController::daptch(ClientHandler<T> *hdl, const std::string &msg, std::string &reply_msg)
+void ErizoController::onShutdown(ClientHandler<T> *hdl)
+{
+}
+
+template <typename T>
+std::string ErizoController::onMessage(ClientHandler<T> *hdl, const std::string &msg)
 {
     Client &client = hdl->getClient();
-
-    reply_msg = "shutdown";
     Json::Value root;
     Json::Reader reader;
     if (!reader.parse(msg, root))
     {
         ELOG_ERROR("Message parse failed");
-        return 1;
+        return "shutdown";
     }
 
     if (root.type() != Json::arrayValue ||
@@ -351,39 +357,27 @@ int ErizoController::daptch(ClientHandler<T> *hdl, const std::string &msg, std::
         root[1].type() != Json::objectValue)
     {
         ELOG_ERROR("Event format error");
-        return 1;
+        return "shutdown";
     }
-
     Json::Value reply = Json::nullValue;
     std::string event = root[0].asString();
     Json::Value data = root[1];
     if (!event.compare("token"))
-    {
         reply = handleToken(client, data);
-    }
     else if (!event.compare("publish"))
-    {
         reply = handlePublish(client, data);
-    }
     else if (!event.compare("signaling_message"))
-    {
         reply = handleSignaling(client, data);
-    }
 
     if (reply != Json::nullValue)
     {
         if (reply.type() == Json::arrayValue && reply.size() == 0)
-        {
-            reply_msg = "notreply";
-        }
-        else
-        {
-            Json::FastWriter writer;
-            reply_msg = writer.write(reply);
-        }
-    }
+            return "notreply";
 
-    return 0;
+        Json::FastWriter writer;
+        return writer.write(reply);
+    }
+    return "shutdown";
 }
 
 Json::Value ErizoController::handleToken(Client &client, const Json::Value &root)
@@ -431,8 +425,6 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     publisher.id = Utils::getStreamID();
     publisher.erizo_id = client.erizo_id;
     publisher.agent_id = client.agent_id;
-    publisher.plain_client_hdl = client.plain_client_hdl;
-    publisher.ssl_client_hdl = client.ssl_client_hdl;
     client.publishers[publisher.id] = publisher;
 
     if (addPublisher(publisher.erizo_id, client.id, publisher.id, root["label"].asString()))

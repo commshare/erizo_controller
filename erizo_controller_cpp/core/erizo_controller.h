@@ -47,11 +47,12 @@ private:
                        const Json::Value &msg);
   void onSignalingMessage(const std::string &msg);
 
-
-
+  template <typename T>
+  std::string onMessage(ClientHandler<T> *hdl, const std::string &msg);
 
   template <typename T>
-  int daptch(ClientHandler<T> *hdl, const std::string &msg, std::string &reply_msg);
+  void onShutdown(ClientHandler<T> *hdl);
+
   Json::Value handleToken(Client &client, const Json::Value &root);
   Json::Value handlePublish(Client &client, const Json::Value &root);
   Json::Value handleSignaling(Client &client, const Json::Value &root);
@@ -62,7 +63,7 @@ private:
   std::shared_ptr<WSServer<server_plain>> ws_;
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;
-
+  bool init_;
 };
 
 #endif
