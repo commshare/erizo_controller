@@ -153,6 +153,7 @@ int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publish
     {
         if (v.isString())
         {
+            printf("########### %s\n",v.toString().c_str());
             Publisher p;
             if (!Publisher::fromJSON(v.toString(), p))
                 publishers.push_back(p);

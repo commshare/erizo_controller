@@ -9,14 +9,14 @@ struct Stream
     std::string id;
     std::string erizo_id;
     std::string agent_id;
-    
+    std::string label;
     Stream()
     {
         id = "";
         erizo_id = "";
         agent_id = "";
+        label = "";
     }
-
 };
 
 #endif

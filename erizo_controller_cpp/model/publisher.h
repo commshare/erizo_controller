@@ -16,6 +16,7 @@ struct Publisher : public Stream
         root["id"] = id;
         root["erizo_id"] = erizo_id;
         root["agent_id"] = agent_id;
+        root["label"] = label;
         Json::FastWriter writer;
         return writer.write(root);
     }
@@ -32,12 +33,15 @@ struct Publisher : public Stream
             !root.isMember("erizo_id") ||
             root["erizo_id"].type() != Json::stringValue ||
             !root.isMember("agent_id") ||
-            root["agent_id"].type() != Json::stringValue)
+            root["agent_id"].type() != Json::stringValue ||
+            !root.isMember("label") ||
+            root["label"].type() != Json::stringValue)
             return 1;
 
         publisher.id = root["id"].asString();
         publisher.erizo_id = root["erizo_id"].asString();
         publisher.agent_id = root["agent_id"].asString();
+        publisher.label = root["label"].asString();
         return 0;
     }
 };

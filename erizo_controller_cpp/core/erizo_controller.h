@@ -38,6 +38,13 @@ private:
                    const std::string &client_id,
                    const std::string &stream_id,
                    const std::string &label);
+
+  int addSubscriber(const std::string &erizo_id,
+                    const std::string &client_id,
+                    const std::string &stream_id,
+                   // const std::string &subscribe_to,
+                    const std::string &label);
+
   int getErizo(const std::string &agent_id,
                const std::string &room_id,
                std::string &erizo_id);
@@ -55,6 +62,7 @@ private:
 
   Json::Value handleToken(Client &client, const Json::Value &root);
   Json::Value handlePublish(Client &client, const Json::Value &root);
+  Json::Value handleSubscribe(Client &client, const Json::Value &root);
   Json::Value handleSignaling(Client &client, const Json::Value &root);
 
 private:
