@@ -4,7 +4,6 @@
 #include <amqp.h>
 #include <amqp_tcp_socket.h>
 #include <json/json.h>
-#include <logger.h>
 
 #include <thread>
 #include <memory>
@@ -13,6 +12,8 @@
 #include <queue>
 #include <functional>
 #include <condition_variable>
+
+#include "common/logger.h"
 
 class AMQPRPCBoardcast
 {

@@ -79,6 +79,7 @@ void ErizoController::close()
 {
     if (!init_)
         return;
+
     redis_->close();
     redis_.reset();
     redis_ = nullptr;
@@ -104,22 +105,14 @@ void ErizoController::close()
 
 void ErizoController::onSignalingMessage(const std::string &msg)
 {
-    printf("msg:_____________>%s\n", msg.c_str());
-
     Json::Value root;
     Json::Reader reader;
     if (!reader.parse(msg, root))
-    {
-        ELOG_ERROR("Signaling message parse failed");
         return;
-    }
 
     if (!root.isMember("data") ||
         root["data"].type() != Json::objectValue)
-    {
-        ELOG_ERROR("Signaling message without data");
         return;
-    }
 
     Json::Value data = root["data"];
     if (!data.isMember("type") ||
@@ -132,10 +125,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         data["erizoId"].type() != Json::stringValue ||
         !data.isMember("agentId") ||
         data["agentId"].type() != Json::stringValue)
-    {
-        ELOG_ERROR("Signaling message data format error");
         return;
-    }
 
     std::string agent_id = data["agentId"].asString();
     std::string erizo_id = data["erizoId"].asString();
@@ -176,10 +166,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
     {
         if (!data.isMember("sdp") ||
             data["sdp"].type() != Json::stringValue)
-        {
-            ELOG_ERROR("Sdp answer format error");
             return;
-        }
 
         Json::Value event;
         event[0] = "signaling_message_erizo";
@@ -196,10 +183,8 @@ void ErizoController::onSignalingMessage(const std::string &msg)
     {
         if (!data.isMember("sdp") ||
             data["sdp"].type() != Json::stringValue)
-        {
-            ELOG_ERROR("Sdp answer format error");
             return;
-        }
+
         Json::Value event;
         event[0] = "signaling_message_erizo";
         Json::Value mess;
@@ -315,7 +300,6 @@ int ErizoController::addPublisher(const std::string &erizo_id,
 int ErizoController::addSubscriber(const std::string &erizo_id,
                                    const std::string &client_id,
                                    const std::string &stream_id,
-                                   //const std::string &subscribe_to,
                                    const std::string &label)
 {
     std::string queuename = "Erizo_" + erizo_id;
@@ -324,7 +308,6 @@ int ErizoController::addSubscriber(const std::string &erizo_id,
     Json::Value args;
     args[0] = client_id;
     args[1] = stream_id;
-    //args[2] = subscribe_to;
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
     data["args"] = args;
@@ -554,14 +537,13 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     }
 
     Subscriber subscriber;
-    subscriber.id = stream_id; //Utils::getStreamID();
+    subscriber.id = stream_id; 
     subscriber.erizo_id = client.erizo_id;
     subscriber.agent_id = client.agent_id;
-    //subscriber.subscribe_to = subscribe_to;
     subscriber.label = publisher.label;
     client.subscribers[subscriber.id] = subscriber;
 
-    if (addSubscriber(client.erizo_id, client.id, subscriber.id, /* subscribe_to,*/ subscriber.label))
+    if (addSubscriber(client.erizo_id, client.id, subscriber.id, subscriber.label))
     {
         ELOG_ERROR("addSubscriber failed");
         return Json::nullValue;

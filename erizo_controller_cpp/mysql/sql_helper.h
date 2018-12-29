@@ -11,7 +11,7 @@
 #include <cppconn/resultset.h>
 #include <cppconn/prepared_statement.h>
 
-#include <logger.h>
+#include "common/logger.h"
 
 class SQLHelper
 {

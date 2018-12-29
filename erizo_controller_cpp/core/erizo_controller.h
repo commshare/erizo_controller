@@ -42,7 +42,6 @@ private:
   int addSubscriber(const std::string &erizo_id,
                     const std::string &client_id,
                     const std::string &stream_id,
-                   // const std::string &subscribe_to,
                     const std::string &label);
 
   int getErizo(const std::string &agent_id,

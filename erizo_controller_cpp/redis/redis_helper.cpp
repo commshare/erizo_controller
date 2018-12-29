@@ -13,10 +13,7 @@ RedisHelper::~RedisHelper() {}
 int RedisHelper::init()
 {
     if (init_)
-    {
-        ELOG_WARN("RedisHelper duplicate initialize!!!");
         return 0;
-    }
 
     boost::asio::ip::address address = boost::asio::ip::address::from_string(Config::getInstance()->redis_ip_);
     boost::asio::ip::tcp::endpoint endpoint(address, Config::getInstance()->redis_port_);
@@ -57,29 +54,18 @@ int RedisHelper::addRoom(const Room &room)
     redisclient::RedisValue val;
     val = redis_->command("HSET", {"rooms", room.id, room.toJSON()});
     if (!val.isOk())
-    {
-        ELOG_ERROR("Redis execute HSET failed");
         return 1;
-    }
     return 0;
 }
 
 int RedisHelper::getRoom(const std::string &room_id, Room &room)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HGET", {"rooms", room.id});
+    val = redis_->command("HGET", {"rooms", room_id});
     if (!val.isOk() || !val.isString())
-    {
-        ELOG_ERROR("Redis execute HSET failed");
         return 1;
-    }
-
     if (Room::fromJSON(val.toString(), room))
-    {
-        ELOG_ERROR("Convert json to Room Object failed");
         return 1;
-    }
-
     return 0;
 }
 
@@ -88,10 +74,7 @@ int RedisHelper::getAllRoom(std::vector<Room> &rooms)
     redisclient::RedisValue val;
     val = redis_->command("HVALS", {"rooms"});
     if (!val.isOk() || !val.isArray())
-    {
-        ELOG_ERROR("Redis execute HVALS failed");
         return 1;
-    }
 
     rooms.clear();
     std::vector<redisclient::RedisValue> vec = val.toArray();
@@ -107,53 +90,68 @@ int RedisHelper::getAllRoom(std::vector<Room> &rooms)
     return 0;
 }
 
+int RedisHelper::addClient(const std::string &room_id, const std::string &client_id)
+{
+    redisclient::RedisValue val;
+    std::string key = "clients_" + room_id;
+    val = redis_->command("HSET", {key, client_id, client_id});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getAllClient(const std::string &room_id, std::vector<std::string> &client_ids)
+{
+    redisclient::RedisValue val;
+    std::string key = "clients_" + room_id;
+    val = redis_->command("HVALS", {key});
+    if (!val.isOk() || !val.isArray())
+        return 1;
+    client_ids.clear();
+    std::vector<redisclient::RedisValue> vec = val.toArray();
+    for (redisclient::RedisValue v : vec)
+    {
+        if (v.isString())
+            client_ids.push_back(v.toString());
+    }
+    return 0;
+}
+
 int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubilsher)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HSET", {room_id, pubilsher.id, pubilsher.toJSON()});
+    std::string key = "publishers_" + room_id;
+    val = redis_->command("HSET", {key, pubilsher.id, pubilsher.toJSON()});
     if (!val.isOk())
-    {
-        ELOG_ERROR("Redis execute HSET failed");
         return 1;
-    }
     return 0;
 }
 
 int RedisHelper::getPublisher(const std::string &room_id, const std::string &publisher_id, Publisher &publisher)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HGET", {room_id, publisher_id});
+    std::string key = "publishers_" + room_id;
+    val = redis_->command("HGET", {key, publisher_id});
     if (!val.isOk() || !val.isString())
-    {
-        ELOG_ERROR("Redis execute HSET failed");
         return 1;
-    }
-
     if (Publisher::fromJSON(val.toString(), publisher))
-    {
-        ELOG_ERROR("Convert json to Publisher Object failed");
         return 1;
-    }
-
     return 0;
 }
 
 int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publisher> &publishers)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HVALS", {room_id});
+    std::string key = "publishers_" + room_id;
+    val = redis_->command("HVALS", {key});
     if (!val.isOk())
-    {
-        ELOG_ERROR("Redis execute HSET failed");
         return 1;
-    }
     publishers.clear();
     std::vector<redisclient::RedisValue> vec = val.toArray();
     for (redisclient::RedisValue v : vec)
     {
         if (v.isString())
         {
-            printf("########### %s\n",v.toString().c_str());
             Publisher p;
             if (!Publisher::fromJSON(v.toString(), p))
                 publishers.push_back(p);

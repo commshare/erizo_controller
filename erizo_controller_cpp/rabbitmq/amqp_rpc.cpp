@@ -107,7 +107,7 @@ int AMQPRPC::init()
     cb_queue_.resize(kQueueSize);
 
     run_ = true;
-    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([&, this]() {
+    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
         /*
          * 当rpc完成后,远端回送的数据会在这里接收,收到数据后,释放回调队列里条件变量
          * 原先阻塞的线程开始执行
@@ -159,19 +159,21 @@ int AMQPRPC::init()
     check_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
         while (run_)
         {
-            std::unique_ptr<std::mutex>(cb_queue_mux_);
-            uint64_t now = Utils::getCurrentMs();
-            for (AMQPCallback &cb : cb_queue_)
             {
-                if (cb.ts != 0)
+                std::unique_ptr<std::mutex>(cb_queue_mux_);
+                uint64_t now = Utils::getCurrentMs();
+                for (AMQPCallback &cb : cb_queue_)
                 {
-                    int dur = (int)(now - cb.ts);
-                    if (dur > Config::getInstance()->rabbitmq_timeout_)
+                    if (cb.ts != 0)
                     {
-                        ELOG_WARN("Rabbitmq rpc callback timeout");
-                        cb.data = Json::nullValue;
-                        cb.cond.notify_one();
-                        cb.ts = 0;
+                        int dur = (int)(now - cb.ts);
+                        if (dur > Config::getInstance()->rabbitmq_timeout_)
+                        {
+                            ELOG_WARN("Rabbitmq rpc callback timeout");
+                            cb.data = Json::nullValue;
+                            cb.cond.notify_one();
+                            cb.ts = 0;
+                        }
                     }
                 }
             }

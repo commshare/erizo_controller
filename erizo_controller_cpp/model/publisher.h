@@ -10,6 +10,8 @@
 
 struct Publisher : public Stream
 {
+    std::string label;
+
     std::string toJSON() const
     {
         Json::Value root;

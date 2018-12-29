@@ -5,13 +5,16 @@
 #include <thread>
 #include <mutex>
 
-#include <logger.h>
 #include <boost/asio/io_service.hpp>
 #include <redisclient/redissyncclient.h>
 
 #include "model/publisher.h"
 #include "model/subscriber.h"
 #include "model/room.h"
+#include "model/client.h"
+
+#include "common/logger.h"
+
 class RedisHelper
 {
   DECLARE_LOGGER();
@@ -26,6 +29,9 @@ public:
   int addRoom(const Room &room);
   int getRoom(const std::string &room_id, Room &room);
   int getAllRoom(std::vector<Room> &rooms);
+
+  int addClient(const std::string &room_id, const std::string &client_id);
+  int getAllClient(const std::string &room_id, std::vector<std::string> &client_ids);
 
   int addPublisher(const std::string &room_id, const Publisher &publisher);
   int getPublisher(const std::string &room_id, const std::string &publisher_id, Publisher &publisher);

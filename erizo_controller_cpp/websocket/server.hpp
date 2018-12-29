@@ -9,10 +9,10 @@
 
 #include <websocketpp/config/asio.hpp>
 #include <websocketpp/server.hpp>
-#include <logger.h>
 
 #include "common/utils.h"
 #include "common/config.h"
+#include "common/logger.h"
 #include "client_handler.hpp"
 
 template <typename T>
@@ -28,19 +28,7 @@ public:
   void close();
   void setOnMessage(const std::function<std::string(ClientHandler<T> *, const std::string &)> &on_message) { on_message_ = on_message; }
   void setOnShutdown(const std::function<void(ClientHandler<T> *)> &on_shutdown) { on_shutdown_ = on_shutdown; }
-  std::shared_ptr<ClientHandler<T>> getClient(const std::string &client_id)
-  {
-    auto it = std::find_if(clients_.begin(), clients_.end(),
-                           [&](const std::pair<typename T::connection_ptr, std::shared_ptr<ClientHandler<T>>> &val) -> bool {
-                             Client &client = val.second->getClient();
-                             if (!client.id.compare(client_id))
-                               return true;
-                             return false;
-                           });
-    if (it != clients_.end())
-      return it->second;
-    return nullptr;
-  }
+  std::shared_ptr<ClientHandler<T>> getClient(const std::string &client_id);
 
 private:
   void onConnectionOpen(T *s, websocketpp::connection_hdl hdl);
@@ -49,11 +37,13 @@ private:
   context_ptr onTLSInit(websocketpp::connection_hdl hdl);
 
 private:
-  std::unique_ptr<std::thread> thread_;
-  boost::asio::io_service ios_;
-  std::map<typename T::connection_ptr, std::shared_ptr<ClientHandler<T>>> clients_;
   std::function<std::string(ClientHandler<T> *, const std::string &)> on_message_;
   std::function<void(ClientHandler<T> *)> on_shutdown_;
+  boost::asio::io_service ios_;
+  std::mutex mux_;
+  std::map<typename T::connection_ptr, std::shared_ptr<ClientHandler<T>>> clients_map_;
+  std::map<std::string, std::shared_ptr<ClientHandler<T>>> clients_;
+  std::unique_ptr<std::thread> thread_;
   bool init_;
 };
 
@@ -95,16 +85,10 @@ template <typename T>
 int WSServer<T>::init()
 {
   if (!std::is_same<T, server_tls>::value && !std::is_same<T, server_plain>::value)
-  {
-    ELOG_ERROR("Template error,only support server_tls and server_plain");
     return 1;
-  }
 
   if (init_)
-  {
-    ELOG_WARN("WSServer duplicate initialize !!!");
     return 0;
-  }
 
   thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
     try
@@ -137,18 +121,22 @@ int WSServer<T>::init()
       std::cout << e.what() << std::endl;
     }
   }));
+  init_ = true;
   return 0;
 }
 
 template <typename T>
 void WSServer<T>::close()
 {
+  if (!init_)
+    return;
   ios_.stop();
   thread_->join();
   thread_.reset();
   thread_ = nullptr;
-
+  clients_map_.clear();
   clients_.clear();
+  init_ = false;
 }
 
 template <typename T>
@@ -170,19 +158,36 @@ void WSServer<T>::onConnectionOpen(T *s, websocketpp::connection_hdl hdl)
     return;
   }
 
-  ELOG_INFO("New websocket connection:%#x", hdl.lock().get());
-  clients_[ptr] = std::make_shared<ClientHandler<T>>(s, hdl, on_message_, on_shutdown_);
-  clients_[ptr]->setAddress(ip, port);
-  ELOG_INFO("SocketIO client num:%d", clients_.size());
+  std::unique_lock<std::mutex> lock(mux_);
+  std::shared_ptr<ClientHandler<T>> client = std::make_shared<ClientHandler<T>>(s, hdl, on_message_, on_shutdown_);
+  client->setAddress(ip, port);
+  clients_map_[ptr] = client;
+  clients_[client->getClientId()] = client;
+  ELOG_INFO("new websocket connection:%#x,client num:%d", hdl.lock().get(), clients_map_.size());
 }
 
 template <typename T>
 void WSServer<T>::onConnectionClose(T *s, websocketpp::connection_hdl hdl)
 {
-  ELOG_INFO("Websocket connection:%#x going to shutdown", hdl.lock().get());
-  clients_[s->get_con_from_hdl(hdl)]->goingToShutdown();
-  clients_.erase(s->get_con_from_hdl(hdl));
-  ELOG_INFO("SocketIO client num:%d", clients_.size());
+  std::unique_lock<std::mutex>(mux_);
+  auto it = clients_map_.find(s->get_con_from_hdl(hdl));
+  if (it != clients_map_.end())
+  {
+    it->second->goingToShutdown();
+    clients_.erase(it->second->getClientId());
+    clients_map_.erase(it);
+    ELOG_INFO("websocket connection:%#x going to shutdown,client num:%d", hdl.lock().get(), clients_map_.size());
+  }
+}
+
+template <typename T>
+std::shared_ptr<ClientHandler<T>> WSServer<T>::getClient(const std::string &client_id)
+{
+  std::unique_lock<std::mutex> lock(mux_);
+  auto it = clients_.find(client_id);
+  if (it != clients_.end())
+    return it->second;
+  return nullptr;
 }
 
 #endif

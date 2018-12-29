@@ -7,12 +7,6 @@
 
 struct Room
 {
-    Room()
-    {
-        id = "";
-        name = "";
-    }
-    
     std::string id;
     std::string name;
 

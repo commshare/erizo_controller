@@ -4,7 +4,8 @@
 #include <string>
 
 #include <json/json.h>
-#include <logger.h>
+
+#include "common/logger.h"
 
 class Config
 {

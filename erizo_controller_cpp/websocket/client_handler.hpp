@@ -60,14 +60,8 @@ class ClientHandler
 
     void setAddress(const std::string &ip, uint16_t port)
     {
-        ip_ = ip;
-        port_ = port;
-    }
-
-    void getAddress(std::string &ip, uint16_t &port)
-    {
-        ip = ip_;
-        port = port_;
+        client_.client_ip = ip;
+        client_.client_port = port;
     }
 
     void goingToShutdown()
@@ -90,8 +84,6 @@ class ClientHandler
     websocketpp::connection_hdl hdl_;
     std::function<std::string(ClientHandler<T> *, const std::string &)> on_message_;
     std::function<void(ClientHandler<T> *)> on_shutdown_;
-    std::string ip_;
-    uint16_t port_;
     Client client_;
 };
 
@@ -105,11 +97,8 @@ ClientHandler<T>::ClientHandler(T *server,
                                 const std::function<void(ClientHandler<T> *)> &on_shutdown) : server_(server),
                                                                                               hdl_(hdl),
                                                                                               on_message_(on_message),
-                                                                                              on_shutdown_(on_shutdown),
-                                                                                              ip_(""),
-                                                                                              port_(0)
+                                                                                              on_shutdown_(on_shutdown)
 {
-
     typename T::connection_ptr conn = server_->get_con_from_hdl(hdl_);
     conn->set_message_handler(bind(&ClientHandler::onMessage, this, server_, ::_1, ::_2));
 
@@ -125,8 +114,6 @@ ClientHandler<T>::ClientHandler(T *server,
     server->send(hdl, "40", websocketpp::frame::opcode::TEXT);
 
     client_.id = Utils::getUUID();
-    client_.ip = ip_;
-    client_.port = port_;
 }
 
 template <typename T>
@@ -138,8 +125,6 @@ template <typename T>
 void ClientHandler<T>::onMessage(T *s, websocketpp::connection_hdl hdl, typename T::message_ptr msg)
 {
     std::string payload = msg->get_payload();
-    ELOG_INFO("recevice message:%s", payload);
-
     SOCKET_IO_FRAME_TYPE frame_type = (SOCKET_IO_FRAME_TYPE)(payload[0] - '0');
     switch (frame_type)
     {

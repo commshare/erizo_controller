@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 #include <time.h>
+#include <sys/syscall.h>
 
 class Utils
 {
@@ -67,10 +68,23 @@ class Utils
 
     static std::string getStreamID()
     {
+        srand(time(0));
         std::stringstream oss;
         for (int i = 0; i < 18; i++)
+        {
+            if (i == 0)
+            {
+                oss << (rand() % 9 + 1);
+                continue;
+            }
             oss << rand() % 10;
+        }
         return oss.str();
+    }
+
+    static int gettid()
+    {
+        return syscall(__NR_gettid);
     }
 };
 
