@@ -64,7 +64,7 @@ int SocketIOServer::init()
                 uS::TLS::Context context = uS::TLS::createContext(Config::getInstance()->ssl_cert_,
                                                                   Config::getInstance()->ssl_key_,
                                                                   Config::getInstance()->ssl_passwd_);
-                if (!hub.listen(Config::getInstance()->ssl_port_, context))
+                if (!hub.listen(Config::getInstance()->ssl_port_, context,uS::ListenOptions::REUSE_PORT))
                 {
                     ELOG_ERROR("socket-io server(tls) listen to %d failed", Config::getInstance()->ssl_port_);
                     return;
