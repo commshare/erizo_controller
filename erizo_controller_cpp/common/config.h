@@ -19,8 +19,10 @@ public:
 public:
   // Websocket config
   unsigned short port_;
+  bool ssl_;
   std::string ssl_key_;
   std::string ssl_cert_;
+  std::string ssl_passwd_;
   unsigned short ssl_port_;
 
   // Mysql config
@@ -40,7 +42,9 @@ public:
   unsigned short rabbitmq_port_;
   int rabbitmq_timeout_;
   std::string uniquecast_exchange_;
-  std::string boardcast_exchange_; 
+  std::string boardcast_exchange_;
+
+  int worker_num_;
 
 private:
   Config();

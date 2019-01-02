@@ -28,6 +28,8 @@ Config::Config()
     rabbitmq_timeout_ = 1000;
     uniquecast_exchange_ = "erizo_uniquecast_exchange";
     boardcast_exchange_ = "erizo_boardcast_exchange";
+
+    worker_num_ = 10;
 }
 
 Config *Config::getInstance()
@@ -68,10 +70,14 @@ int Config::init(const std::string &config_file)
         websocket.type() != Json::objectValue ||
         !websocket.isMember("port") ||
         websocket["port"].type() != Json::intValue ||
+        !websocket.isMember("ssl") ||
+        websocket["ssl"].type() != Json::booleanValue ||
         !websocket.isMember("ssl_key") ||
         websocket["ssl_key"].type() != Json::stringValue ||
         !websocket.isMember("ssl_cert") ||
         websocket["ssl_cert"].type() != Json::stringValue ||
+        !websocket.isMember("ssl_passwd") ||
+        websocket["ssl_passwd"].type() != Json::stringValue ||
         !websocket.isMember("ssl_port") ||
         websocket["ssl_port"].type() != Json::intValue)
     {
@@ -130,8 +136,10 @@ int Config::init(const std::string &config_file)
     }
 
     port_ = websocket["port"].asInt();
+    ssl_ = websocket["ssl"].asBool();
     ssl_key_ = websocket["ssl_key"].asString();
     ssl_cert_ = websocket["ssl_cert"].asString();
+    ssl_passwd_ = websocket["ssl_passwd"].asString();
     ssl_port_ = websocket["ssl_port"].asInt();
 
     mysql_url_ = mysql["url"].asString();

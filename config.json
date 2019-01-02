@@ -1,8 +1,10 @@
 {
     "websocket": {
         "port": 8080,
+        "ssl": false,
         "ssl_key": "cert/key.pem",
         "ssl_cert": "cert/cert.pem",
+        "ssl_passwd": "",
         "ssl_port": 443
     },
     "mysql": {
