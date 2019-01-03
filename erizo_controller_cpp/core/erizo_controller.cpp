@@ -4,8 +4,6 @@ DEFINE_LOGGER(ErizoController, "ErizoController");
 
 ErizoController::ErizoController() : redis_(nullptr),
                                      socket_io_(nullptr),
-                                     //  ws_tls_(nullptr),
-                                     //  ws_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
                                      thread_pool_(nullptr),
@@ -38,46 +36,18 @@ int ErizoController::init()
         return 1;
     }
 
-    // ws_tls_ = std::make_shared<WSServer<server_tls>>();
-    // if (ws_tls_->init())
-    // {
-    //     ELOG_ERROR("WebsocketTLS initialize failed");
-    //     return 1;
-    // }
-
-    // ws_tls_->setOnMessage([&](ClientHandler<server_tls> *client_hdl, const std::string &msg) {
-    //     return onMessage(client_hdl, msg);
-    // });
-    // ws_tls_->setOnShutdown([&](ClientHandler<server_tls> *client_hdl) {
-
-    // });
-
-    // ws_ = std::make_shared<WSServer<server_plain>>();
-    // if (ws_->init())
-    // {
-    //     ELOG_ERROR("Websocket initialize failed");
-    //     return 1;
-    // }
-
-    // ws_->setOnMessage([&](ClientHandler<server_plain> *client_hdl, const std::string &msg) {
-    //     return onMessage(client_hdl, msg);
-    // });
-    // ws_->setOnShutdown([&](ClientHandler<server_plain> *client_hdl) {
-
-    // });
-
     socket_io_ = std::make_shared<SocketIOServer>();
+    if (socket_io_->init())
+    {
+        ELOG_ERROR("SocketIO server initialize failed");
+        return 1;
+    }
     socket_io_->onMessage([&](SocketIOClientHandler *hdl, const std::string &msg) {
         return onMessage(hdl, msg);
     });
     socket_io_->onClose([&](SocketIOClientHandler *hdl) {
         onClose(hdl);
     });
-    if (socket_io_->init())
-    {
-        ELOG_ERROR("SocketIO server initialize failed");
-        return 1;
-    }
 
     amqp_ = std::make_shared<AMQPRPC>();
     if (amqp_->init())
@@ -109,14 +79,8 @@ void ErizoController::close()
     redis_ = nullptr;
 
     socket_io_->close();
-
-    // ws_tls_->close();
-    // ws_tls_.reset();
-    // ws_tls_ = nullptr;
-
-    // ws_->close();
-    // ws_.reset();
-    // ws_ = nullptr;
+    socket_io_.reset();
+    socket_io_ = nullptr;
 
     amqp_->close();
     amqp_.reset();
@@ -228,22 +192,72 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             event[1] = event_data;
             events.push_back(writer.write(event));
         }
+        else if (!type.compare("ready"))
+        {
+            notifyToSubscribe(client_id, stream_id);
+        }
+        else if (!type.compare("new_publisher"))
+        {
+            if (!data.isMember("label") ||
+                data["label"].type() != Json::stringValue)
+                return;
+            
+            Json::Value event;
+            event[0] = "onAddStream";
+            Json::Value event_data;
+            event_data["id"] = stream_id;
+            event_data["audio"] = true;
+            event_data["video"] = true;
+            event_data["data"] = true;
+            event_data["label"] = data["label"].asString();
+            event_data["screen"] = Json::stringValue;
+            event[1] = event_data;
+            events.push_back(writer.write(event));
+        }
 
-        // std::shared_ptr<ClientHandler<server_plain>> plain_client_hdl = ws_->getClient(client_id);
-        // if (plain_client_hdl != nullptr)
-        // {
-        //     for (const std::string &event : events)
-        //         plain_client_hdl->sendEvent(event);
-        // }
-        // std::shared_ptr<ClientHandler<server_tls>> ssl_client_hdl = ws_tls_->getClient(client_id);
-        // if (ssl_client_hdl != nullptr)
-        // {
-        //     for (const std::string &event : events)
-        //         ssl_client_hdl->sendEvent(event);
-        // }
         for (const std::string &event : events)
             socket_io_->sendEvent(client_id, event);
     });
+}
+
+void ErizoController::notifyToSubscribe(const std::string &client_id, const std::string &stream_id)
+{
+    std::string room_id;
+    if (redis_->getRoomByClientId(client_id, room_id))
+    {
+        ELOG_ERROR("Redis getRoomByClientId failed");
+        return;
+    }
+
+    Publisher publisher;
+    if (redis_->getPublisher(room_id, stream_id, publisher))
+    {
+        ELOG_ERROR("Redis getPublisher failed");
+    }
+
+    std::vector<Client> clients;
+    if (redis_->getAllClient(room_id, clients))
+    {
+        ELOG_ERROR("Redis getAllClient failed");
+        return;
+    }
+
+    for (const Client &client : clients)
+    {
+        if (!client.id.compare(client_id))
+            continue;
+        Json::Value root;
+        root["type"] = "new_publisher";
+        root["streamId"] = stream_id;
+        root["clientId"] = client.id;
+        root["erizoId"] = client.erizo_id;
+        root["agentId"] = client.agent_id;
+        root["label"] = publisher.label;
+        amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
+                           client.reply_to,
+                           client.reply_to,
+                           root);
+    }
 }
 
 int ErizoController::getErizo(const std::string &agent_id, const std::string &room_id, std::string &erizo_id)
@@ -473,10 +487,17 @@ Json::Value ErizoController::handleToken(Client &client, const Json::Value &root
 {
     client.room_id = "test_room_id";
     client.agent_id = "1111111111";
+    client.reply_to = amqp_signaling_->getReplyTo();
 
-    if (redis_->addClient(client.room_id, client.id))
+    if (redis_->addClient(client.room_id, client))
     {
         ELOG_ERROR("addClient failed");
+        return Json::nullValue;
+    }
+
+    if (redis_->addClientRoomMapping(client.id, client.room_id))
+    {
+        ELOG_ERROR("addClientRoomMapping failed");
         return Json::nullValue;
     }
 
@@ -541,15 +562,15 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     publisher.label = label;
     client.publishers.push_back(publisher);
 
-    if (addPublisher(publisher.erizo_id, client.id, publisher.id, label))
-    {
-        ELOG_ERROR("addPublisher failed,client %s,publisher %s", client.id, publisher.id);
-        return Json::nullValue;
-    }
-
     if (redis_->addPublisher(client.room_id, publisher))
     {
         ELOG_ERROR("Add publisher to redis failed");
+        return Json::nullValue;
+    }
+
+    if (addPublisher(publisher.erizo_id, client.id, publisher.id, label))
+    {
+        ELOG_ERROR("addPublisher failed,client %s,publisher %s", client.id, publisher.id);
         return Json::nullValue;
     }
 
@@ -617,24 +638,3 @@ Json::Value ErizoController::handleSignaling(Client &client, const Json::Value &
 
     return Json::arrayValue;
 }
-
-// int ErizoController::notifyNewPublisher(const std::string &client_id, const std::string &stream_id)
-// {
-//     std::shared_ptr<ClientHandler<server_plain>> plain_client_hdl = ws_->getClient(client_id);
-//     if (plain_client_hdl != nullptr)
-//     {
-//         std::vector<std::string> client_ids;
-//         Client &client = plain_client_hdl->getClient();
-//         if (redis_->getAllClient(client.room_id, client_ids))
-//         {
-//             ELOG_ERROR("Redis getAllClient failed");
-//             return 1;
-//         }
-//     }
-//     return 0;
-// }
-
-// Client &ErizoController::getClient(const std::string &client_id)
-// {
-
-// }

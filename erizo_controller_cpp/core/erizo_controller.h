@@ -9,7 +9,6 @@
 #include <json/json.h>
 
 #include "websocket/socket_io_server.h"
-// #include "websocket/server.hpp"
 #include "redis/redis_helper.h"
 #include "rabbitmq/amqp_rpc.h"
 #include "rabbitmq/amqp_rpc_boardcast.h"
@@ -37,9 +36,7 @@ public:
   void close();
 
 private:
-  // int notifyNewPublisher(const std::string &client_id, const std::string &stream_id);
-
-  // Client &getClient(const std::string &client_id);
+  void notifyToSubscribe(const std::string &client_id, const std::string &stream_id);
   void asyncTask(const std::function<void()> &func);
 
   int addPublisher(const std::string &erizo_id,
@@ -61,11 +58,9 @@ private:
                        const Json::Value &msg);
   void onSignalingMessage(const std::string &msg);
 
-  // template <typename T>
-  // std::string onMessage(ClientHandler<T> *hdl, const std::string &msg);
+  
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
-  // template <typename T>
-  // void onShutdown(ClientHandler<T> *hdl);
+
   void onClose(SocketIOClientHandler *hdl);
   Json::Value handleToken(Client &client, const Json::Value &root);
   Json::Value handlePublish(Client &client, const Json::Value &root);
@@ -74,9 +69,6 @@ private:
 
 private:
   std::shared_ptr<RedisHelper> redis_;
-  // std::shared_ptr<WSServer<server_tls>> ws_tls_;
-  // std::shared_ptr<WSServer<server_plain>> ws_;
-
   std::shared_ptr<SocketIOServer> socket_io_;
 
   std::shared_ptr<AMQPRPC> amqp_;

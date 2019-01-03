@@ -30,8 +30,11 @@ public:
   int getRoom(const std::string &room_id, Room &room);
   int getAllRoom(std::vector<Room> &rooms);
 
-  int addClient(const std::string &room_id, const std::string &client_id);
-  int getAllClient(const std::string &room_id, std::vector<std::string> &client_ids);
+  int addClient(const std::string &room_id, const Client &client);
+  int getAllClient(const std::string &room_id, std::vector<Client> &clients);
+
+  int addClientRoomMapping(const std::string &client_id, const std::string &room_id);
+  int getRoomByClientId(const std::string &client_id, std::string &room_id);
 
   int addPublisher(const std::string &room_id, const Publisher &publisher);
   int getPublisher(const std::string &room_id, const std::string &publisher_id, Publisher &publisher);
@@ -41,6 +44,9 @@ public:
   int removePublisher(const std::string &room_id, const std::string &publisher_id);
   int removeSubscriber(const std::string &publisher_id, const std::string &subscriber_id);
   int removeRoom(const std::string &room_id);
+
+private:
+  redisclient::RedisValue command(const std::string cmd, const std ::deque<redisclient::RedisBuffer> &buffer);
 
 private:
   std::shared_ptr<redisclient::RedisSyncClient> redis_;

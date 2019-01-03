@@ -56,6 +56,11 @@ class AMQPRPC
                 const Json::Value &data,
                 const std::function<void(const Json::Value &)> &func);
 
+    void sendMessage(const std::string &exchange,
+                     const std::string &queuename,
+                     const std::string &binding_key,
+                     const Json::Value &data);
+
   private:
     int checkError(amqp_rpc_reply_t x);
     void handleCallback(const std::string &msg);

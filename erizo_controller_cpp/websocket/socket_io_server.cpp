@@ -33,10 +33,11 @@ int SocketIOServer::init()
         return new std::thread([&]() {
             uWS::Hub hub;
             hub.onConnection([&](uWS::WebSocket<uWS::SERVER> *ws, uWS::HttpRequest req) {
-                std::unique_lock<std::mutex> lock(mux_);
                 SocketIOClientHandler *hdl = new SocketIOClientHandler(ws, std::ref(on_message_hdl_), std::ref(on_close_hdl_));
-                ws->setUserData(hdl);
                 std::string client_id = hdl->getClient().id;
+                ws->setUserData(hdl);
+
+                std::unique_lock<std::mutex> lock(mux_);
                 clients_[client_id] = hdl;
                 ELOG_INFO("client %s connect,num:%d", client_id, clients_.size());
             });
@@ -44,17 +45,25 @@ int SocketIOServer::init()
             hub.onMessage([&](uWS::WebSocket<uWS::SERVER> *ws, char *data, size_t len, uWS::OpCode op_codec) {
                 if (op_codec == uWS::OpCode::TEXT)
                 {
-                    SocketIOClientHandler *hdl = reinterpret_cast<SocketIOClientHandler *>(ws->getUserData());
+                    void *ptr = ws->getUserData();
+                    if (ptr == nullptr)
+                        return;
+                    SocketIOClientHandler *hdl = reinterpret_cast<SocketIOClientHandler *>(ptr);
                     hdl->onMessage(std::string(data, len));
                 }
             });
 
             hub.onDisconnection([&](uWS::WebSocket<uWS::SERVER> *ws, int code, char *data, size_t len) {
-                std::unique_lock<std::mutex> lock(mux_);
-                SocketIOClientHandler *hdl = reinterpret_cast<SocketIOClientHandler *>(ws->getUserData());
+                void *ptr = ws->getUserData();
+                if (ptr == nullptr)
+                    return;
+
+                SocketIOClientHandler *hdl = reinterpret_cast<SocketIOClientHandler *>(ptr);
                 std::string client_id = hdl->getClient().id;
-                clients_.erase(client_id);
                 hdl->onClose();
+
+                std::unique_lock<std::mutex> lock(mux_);
+                clients_.erase(client_id);
                 delete hdl;
                 ELOG_INFO("client %s disconnect,num:%d", client_id, clients_.size());
             });
@@ -64,7 +73,7 @@ int SocketIOServer::init()
                 uS::TLS::Context context = uS::TLS::createContext(Config::getInstance()->ssl_cert_,
                                                                   Config::getInstance()->ssl_key_,
                                                                   Config::getInstance()->ssl_passwd_);
-                if (!hub.listen(Config::getInstance()->ssl_port_, context,uS::ListenOptions::REUSE_PORT))
+                if (!hub.listen(Config::getInstance()->ssl_port_, context, uS::ListenOptions::REUSE_PORT))
                 {
                     ELOG_ERROR("socket-io server(tls) listen to %d failed", Config::getInstance()->ssl_port_);
                     return;

@@ -10,6 +10,12 @@ RedisHelper::RedisHelper() : redis_(nullptr), init_(false) {}
 
 RedisHelper::~RedisHelper() {}
 
+redisclient::RedisValue RedisHelper::command(const std::string cmd, const std ::deque<redisclient::RedisBuffer> &buffer)
+{
+    std::unique_lock<std::mutex> lock(mux_);
+    return redis_->command(cmd, buffer);
+}
+
 int RedisHelper::init()
 {
     if (init_)
@@ -28,7 +34,7 @@ int RedisHelper::init()
     }
 
     redisclient::RedisValue result;
-    result = redis_->command("AUTH", {Config::getInstance()->redis_password_});
+    result = command("AUTH", {Config::getInstance()->redis_password_});
     if (result.isError())
     {
         ELOG_ERROR("Auth failed");
@@ -52,7 +58,7 @@ void RedisHelper::close()
 int RedisHelper::addRoom(const Room &room)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HSET", {"rooms", room.id, room.toJSON()});
+    val = command("HSET", {"rooms", room.id, room.toJSON()});
     if (!val.isOk())
         return 1;
     return 0;
@@ -61,7 +67,7 @@ int RedisHelper::addRoom(const Room &room)
 int RedisHelper::getRoom(const std::string &room_id, Room &room)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HGET", {"rooms", room_id});
+    val = command("HGET", {"rooms", room_id});
     if (!val.isOk() || !val.isString())
         return 1;
     if (Room::fromJSON(val.toString(), room))
@@ -72,7 +78,7 @@ int RedisHelper::getRoom(const std::string &room_id, Room &room)
 int RedisHelper::getAllRoom(std::vector<Room> &rooms)
 {
     redisclient::RedisValue val;
-    val = redis_->command("HVALS", {"rooms"});
+    val = command("HVALS", {"rooms"});
     if (!val.isOk() || !val.isArray())
         return 1;
 
@@ -90,30 +96,53 @@ int RedisHelper::getAllRoom(std::vector<Room> &rooms)
     return 0;
 }
 
-int RedisHelper::addClient(const std::string &room_id, const std::string &client_id)
+int RedisHelper::addClient(const std::string &room_id, const Client &client)
 {
     redisclient::RedisValue val;
     std::string key = "clients_" + room_id;
-    val = redis_->command("HSET", {key, client_id, client_id});
+    val = command("HSET", {key, client.id, client.toJSON()});
     if (!val.isOk())
         return 1;
     return 0;
 }
 
-int RedisHelper::getAllClient(const std::string &room_id, std::vector<std::string> &client_ids)
+int RedisHelper::getAllClient(const std::string &room_id, std::vector<Client> &clients)
 {
     redisclient::RedisValue val;
     std::string key = "clients_" + room_id;
-    val = redis_->command("HVALS", {key});
+    val = command("HVALS", {key});
     if (!val.isOk() || !val.isArray())
         return 1;
-    client_ids.clear();
+    clients.clear();
     std::vector<redisclient::RedisValue> vec = val.toArray();
     for (redisclient::RedisValue v : vec)
     {
         if (v.isString())
-            client_ids.push_back(v.toString());
+        {
+            Client c;
+            if (!Client::fromJSON(v.toString(), c))
+                clients.push_back(c);
+        }
     }
+    return 0;
+}
+
+int RedisHelper::addClientRoomMapping(const std::string &client_id, const std::string &room_id)
+{
+    redisclient::RedisValue val;
+    val = command("HSET", {"clients", client_id, room_id});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getRoomByClientId(const std::string &client_id, std::string &room_id)
+{
+    redisclient::RedisValue val;
+    val = command("HGET", {"clients", client_id});
+    if (!val.isOk() || !val.isString())
+        return 1;
+    room_id = val.toString();
     return 0;
 }
 
@@ -121,7 +150,7 @@ int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubil
 {
     redisclient::RedisValue val;
     std::string key = "publishers_" + room_id;
-    val = redis_->command("HSET", {key, pubilsher.id, pubilsher.toJSON()});
+    val = command("HSET", {key, pubilsher.id, pubilsher.toJSON()});
     if (!val.isOk())
         return 1;
     return 0;
@@ -131,7 +160,7 @@ int RedisHelper::getPublisher(const std::string &room_id, const std::string &pub
 {
     redisclient::RedisValue val;
     std::string key = "publishers_" + room_id;
-    val = redis_->command("HGET", {key, publisher_id});
+    val = command("HGET", {key, publisher_id});
     if (!val.isOk() || !val.isString())
         return 1;
     if (Publisher::fromJSON(val.toString(), publisher))
@@ -143,7 +172,7 @@ int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publish
 {
     redisclient::RedisValue val;
     std::string key = "publishers_" + room_id;
-    val = redis_->command("HVALS", {key});
+    val = command("HVALS", {key});
     if (!val.isOk())
         return 1;
     publishers.clear();
