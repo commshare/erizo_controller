@@ -189,7 +189,38 @@ int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publish
     return 0;
 }
 
-int RedisHelper::addSubscriber(const std::string &publisher_id, const Subscriber &subscriber) { return 0; }
+int RedisHelper::addSubscriber(const std::string &room_id, const Subscriber &subscriber)
+{
+    redisclient::RedisValue val;
+    std::string key = "subscribers_" + room_id;
+    val = command("HSET", {key, subscriber.id, subscriber.toJSON()});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscriber> &subscribers)
+{
+    redisclient::RedisValue val;
+    std::string key = "subscribers_" + room_id;
+    val = command("HVALS", {key});
+    if (!val.isOk())
+        return 1;
+
+    subscribers.clear();
+    std::vector<redisclient::RedisValue> vec = val.toArray();
+    for (redisclient::RedisValue v : vec)
+    {
+        if (v.isString())
+        {
+            Subscriber s;
+            if (!Subscriber::fromJSON(v.toString(), s))
+                subscribers.push_back(s);
+        }
+    }
+    return 0;
+}
+
 int RedisHelper::removePublisher(const std::string &room_id, const std::string &publisher_id) { return 0; }
 int RedisHelper::removeSubscriber(const std::string &publisher_id, const std::string &subscriber_id) { return 0; }
 int RedisHelper::removeRoom(const std::string &room_id) { return 0; }

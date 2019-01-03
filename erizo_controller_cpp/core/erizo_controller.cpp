@@ -201,7 +201,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             if (!data.isMember("label") ||
                 data["label"].type() != Json::stringValue)
                 return;
-            
+
             Json::Value event;
             event[0] = "onAddStream";
             Json::Value event_data;
@@ -214,50 +214,101 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             event[1] = event_data;
             events.push_back(writer.write(event));
         }
+        else if (!type.compare("remove_subscriber"))
+        {
+            removeSubscriber(erizo_id,client_id, stream_id);
+            Json::Value event;
+            event[0] = "onRemoveStream";
+            Json::Value event_data;
+            event_data["id"] = stream_id;
+            event[1] = event_data;
+            events.push_back(writer.write(event));
+        }
 
         for (const std::string &event : events)
             socket_io_->sendEvent(client_id, event);
     });
 }
 
+void ErizoController::removeSubscriber(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
+{
+    std::string queuename = "Erizo_" + erizo_id;
+    Json::Value data;
+    data["method"] = "removeSubscriber";
+    Json::Value args;
+    args[0] = client_id;
+    args[1] = stream_id;
+    data["args"] = args;
+
+    int ret;
+    std::atomic<bool> callback_done;
+    int try_time = 3;
+    do
+    {
+        try_time--;
+        callback_done = false;
+        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [&](const Json::Value &root) {
+            if (root.type() == Json::nullValue)
+            {
+                ret = 1;
+                callback_done = true;
+                return;
+            }
+            if (!root.isMember("ret") ||
+                root["ret"].type() != Json::intValue)
+            {
+                ret = 1;
+                callback_done = true;
+                return;
+            }
+            ret = root["ret"].asInt();
+            callback_done = true;
+        });
+        while (!callback_done)
+            usleep(0);
+    } while (ret && try_time);
+}
+
 void ErizoController::notifyToSubscribe(const std::string &client_id, const std::string &stream_id)
 {
-    std::string room_id;
-    if (redis_->getRoomByClientId(client_id, room_id))
-    {
-        ELOG_ERROR("Redis getRoomByClientId failed");
-        return;
-    }
+    asyncTask([=]() {
+        std::string room_id;
+        if (redis_->getRoomByClientId(client_id, room_id))
+        {
+            ELOG_ERROR("Redis getRoomByClientId failed");
+            return;
+        }
 
-    Publisher publisher;
-    if (redis_->getPublisher(room_id, stream_id, publisher))
-    {
-        ELOG_ERROR("Redis getPublisher failed");
-    }
+        Publisher publisher;
+        if (redis_->getPublisher(room_id, stream_id, publisher))
+        {
+            ELOG_ERROR("Redis getPublisher failed");
+        }
 
-    std::vector<Client> clients;
-    if (redis_->getAllClient(room_id, clients))
-    {
-        ELOG_ERROR("Redis getAllClient failed");
-        return;
-    }
+        std::vector<Client> clients;
+        if (redis_->getAllClient(room_id, clients))
+        {
+            ELOG_ERROR("Redis getAllClient failed");
+            return;
+        }
 
-    for (const Client &client : clients)
-    {
-        if (!client.id.compare(client_id))
-            continue;
-        Json::Value root;
-        root["type"] = "new_publisher";
-        root["streamId"] = stream_id;
-        root["clientId"] = client.id;
-        root["erizoId"] = client.erizo_id;
-        root["agentId"] = client.agent_id;
-        root["label"] = publisher.label;
-        amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
-                           client.reply_to,
-                           client.reply_to,
-                           root);
-    }
+        for (const Client &client : clients)
+        {
+            if (!client.id.compare(client_id))
+                continue;
+            Json::Value root;
+            root["type"] = "new_publisher";
+            root["streamId"] = stream_id;
+            root["clientId"] = client.id;
+            root["erizoId"] = client.erizo_id;
+            root["agentId"] = client.agent_id;
+            root["label"] = publisher.label;
+            amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
+                               client.reply_to,
+                               client.reply_to,
+                               root);
+        }
+    });
 }
 
 int ErizoController::getErizo(const std::string &agent_id, const std::string &room_id, std::string &erizo_id)
@@ -439,6 +490,32 @@ int ErizoController::processSignaling(const std::string &erizo_id,
 
 void ErizoController::onClose(SocketIOClientHandler *hdl)
 {
+    Client &client = hdl->getClient();
+    std::vector<Subscriber> subscribers;
+
+    if (redis_->getAllSubscriber(client.room_id, subscribers))
+    {
+        ELOG_ERROR("Redis getAllSubscriber failed");
+        return;
+    }
+
+    for (const Subscriber &subscriber : subscribers)
+    {
+        for (const Publisher &publisher : client.publishers)
+            if (!subscriber.subscribe_to.compare(publisher.id))
+            {
+                Json::Value root;
+                root["type"] = "remove_subscriber";
+                root["streamId"] = subscriber.subscribe_to;
+                root["clientId"] = subscriber.client_id;
+                root["erizoId"] = subscriber.erizo_id;
+                root["agentId"] = subscriber.agent_id;
+                amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
+                                   subscriber.reply_to,
+                                   subscriber.reply_to,
+                                   root);
+            }
+    }
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
@@ -598,12 +675,21 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     }
 
     Subscriber subscriber;
-    subscriber.id = stream_id;
+    subscriber.id = Utils::getUUID();
+    subscriber.client_id = client.id;
     subscriber.erizo_id = client.erizo_id;
     subscriber.agent_id = client.agent_id;
+    subscriber.subscribe_to = stream_id;
+    subscriber.reply_to = amqp_signaling_->getReplyTo();
     client.subscribers.push_back(subscriber);
 
-    if (addSubscriber(client.erizo_id, client.id, subscriber.id, publisher.label))
+    if (redis_->addSubscriber(client.room_id, subscriber))
+    {
+        ELOG_ERROR("Add Subscriber to redis failed");
+        return Json::nullValue;
+    }
+
+    if (addSubscriber(client.erizo_id, client.id, stream_id, publisher.label))
     {
         ELOG_ERROR("addSubscriber failed");
         return Json::nullValue;

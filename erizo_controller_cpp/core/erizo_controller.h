@@ -11,7 +11,6 @@
 #include "websocket/socket_io_server.h"
 #include "redis/redis_helper.h"
 #include "rabbitmq/amqp_rpc.h"
-#include "rabbitmq/amqp_rpc_boardcast.h"
 #include "rabbitmq/amqp_recv.h"
 #include "model/client.h"
 #include "thread/thread_pool.h"
@@ -37,6 +36,7 @@ public:
 
 private:
   void notifyToSubscribe(const std::string &client_id, const std::string &stream_id);
+
   void asyncTask(const std::function<void()> &func);
 
   int addPublisher(const std::string &erizo_id,
@@ -49,6 +49,10 @@ private:
                     const std::string &stream_id,
                     const std::string &label);
 
+  void removeSubscriber(const std::string &erizo_id,
+                        const std::string &client_id,
+                        const std::string &stream_id);
+
   int getErizo(const std::string &agent_id,
                const std::string &room_id,
                std::string &erizo_id);
@@ -58,7 +62,6 @@ private:
                        const Json::Value &msg);
   void onSignalingMessage(const std::string &msg);
 
-  
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
 
   void onClose(SocketIOClientHandler *hdl);
