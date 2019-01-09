@@ -39,10 +39,16 @@ private:
 
   void asyncTask(const std::function<void()> &func);
 
+  int rpc(const std::string &queuename, const Json::Value &data);
+
   int addPublisher(const std::string &erizo_id,
                    const std::string &client_id,
                    const std::string &stream_id,
                    const std::string &label);
+
+  void removePublisher(const std::string &erizo_id,
+                       const std::string &client_id,
+                       const std::string &stream_id);
 
   int addSubscriber(const std::string &erizo_id,
                     const std::string &client_id,
@@ -56,10 +62,10 @@ private:
   int getErizo(const std::string &agent_id,
                const std::string &room_id,
                std::string &erizo_id);
-  int processSignaling(const std::string &erizo_id,
-                       const std::string &client_id,
-                       const std::string &stream_id,
-                       const Json::Value &msg);
+  void processSignaling(const std::string &erizo_id,
+                        const std::string &client_id,
+                        const std::string &stream_id,
+                        const Json::Value &msg);
   void onSignalingMessage(const std::string &msg);
 
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
@@ -68,7 +74,7 @@ private:
   Json::Value handleToken(Client &client, const Json::Value &root);
   Json::Value handlePublish(Client &client, const Json::Value &root);
   Json::Value handleSubscribe(Client &client, const Json::Value &root);
-  Json::Value handleSignaling(Client &client, const Json::Value &root);
+  void handleSignaling(Client &client, const Json::Value &root);
 
 private:
   std::shared_ptr<RedisHelper> redis_;

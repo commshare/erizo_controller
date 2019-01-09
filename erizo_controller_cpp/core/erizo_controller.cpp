@@ -216,7 +216,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         }
         else if (!type.compare("remove_subscriber"))
         {
-            removeSubscriber(erizo_id,client_id, stream_id);
+            removeSubscriber(erizo_id, client_id, stream_id);
             Json::Value event;
             event[0] = "onRemoveStream";
             Json::Value event_data;
@@ -230,16 +230,8 @@ void ErizoController::onSignalingMessage(const std::string &msg)
     });
 }
 
-void ErizoController::removeSubscriber(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
+int ErizoController::rpc(const std::string &queuename, const Json::Value &data)
 {
-    std::string queuename = "Erizo_" + erizo_id;
-    Json::Value data;
-    data["method"] = "removeSubscriber";
-    Json::Value args;
-    args[0] = client_id;
-    args[1] = stream_id;
-    data["args"] = args;
-
     int ret;
     std::atomic<bool> callback_done;
     int try_time = 3;
@@ -267,6 +259,31 @@ void ErizoController::removeSubscriber(const std::string &erizo_id, const std::s
         while (!callback_done)
             usleep(0);
     } while (ret && try_time);
+    return ret;
+}
+
+void ErizoController::removePublisher(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
+{
+    std::string queuename = "Erizo_" + erizo_id;
+    Json::Value data;
+    data["method"] = "removePublisher";
+    Json::Value args;
+    args[0] = client_id;
+    args[1] = stream_id;
+    data["args"] = args;
+    rpc(queuename, data);
+}
+
+void ErizoController::removeSubscriber(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
+{
+    std::string queuename = "Erizo_" + erizo_id;
+    Json::Value data;
+    data["method"] = "removeSubscriber";
+    Json::Value args;
+    args[0] = client_id;
+    args[1] = stream_id;
+    data["args"] = args;
+    rpc(queuename, data);
 }
 
 void ErizoController::notifyToSubscribe(const std::string &client_id, const std::string &stream_id)
@@ -367,36 +384,7 @@ int ErizoController::addPublisher(const std::string &erizo_id,
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
     data["args"] = args;
-
-    int ret;
-    std::atomic<bool> callback_done;
-    int try_time = 3;
-    do
-    {
-        try_time--;
-        callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [&](const Json::Value &root) {
-            if (root.type() == Json::nullValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            if (!root.isMember("ret") ||
-                root["ret"].type() != Json::intValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-
-            ret = root["ret"].asInt();
-            callback_done = true;
-        });
-        while (!callback_done)
-            usleep(0);
-    } while (ret && try_time);
-    return ret;
+    return rpc(queuename, data);
 }
 
 int ErizoController::addSubscriber(const std::string &erizo_id,
@@ -413,41 +401,13 @@ int ErizoController::addSubscriber(const std::string &erizo_id,
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
     data["args"] = args;
-
-    int ret;
-    std::atomic<bool> callback_done;
-    int try_time = 3;
-    do
-    {
-        try_time--;
-        callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [&](const Json::Value &root) {
-            if (root.type() == Json::nullValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            if (!root.isMember("ret") ||
-                root["ret"].type() != Json::intValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            ret = root["ret"].asInt();
-            callback_done = true;
-        });
-        while (!callback_done)
-            usleep(0);
-    } while (ret && try_time);
-    return ret;
+    return rpc(queuename, data);
 }
 
-int ErizoController::processSignaling(const std::string &erizo_id,
-                                      const std::string &client_id,
-                                      const std::string &stream_id,
-                                      const Json::Value &msg)
+void ErizoController::processSignaling(const std::string &erizo_id,
+                                       const std::string &client_id,
+                                       const std::string &stream_id,
+                                       const Json::Value &msg)
 {
     std::string queuename = "Erizo_" + erizo_id;
     Json::Value data;
@@ -457,35 +417,10 @@ int ErizoController::processSignaling(const std::string &erizo_id,
     args[1] = stream_id;
     args[2] = msg;
     data["args"] = args;
-
-    int ret;
-    std::atomic<bool> callback_done;
-    int try_time = 3;
-    do
-    {
-        try_time--;
-        callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [&](const Json::Value &root) {
-            if (root.type() == Json::nullValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            if (!root.isMember("ret") ||
-                root["ret"].type() != Json::intValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            ret = root["ret"].asInt();
-            callback_done = true;
-        });
-        while (!callback_done)
-            usleep(0);
-    } while (ret && try_time);
-    return ret;
+    amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
+                       queuename,
+                       queuename,
+                       data);
 }
 
 void ErizoController::onClose(SocketIOClientHandler *hdl)
@@ -499,11 +434,21 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         return;
     }
 
+    std::vector<Publisher> publishers;
+    if (redis_->getAllPublisher(client.room_id, publishers))
+    {
+        ELOG_ERROR("Redis getAllPublisher failed");
+        return;
+    }
+
+    std::vector<std::string> subscribers_to_del;
     for (const Subscriber &subscriber : subscribers)
     {
-        for (const Publisher &publisher : client.publishers)
-            if (!subscriber.subscribe_to.compare(publisher.id))
+        for (const Publisher &publisher : publishers)
+        {
+            if (!publisher.client_id.compare(client.id) && !subscriber.subscribe_to.compare(publisher.id))
             {
+                subscribers_to_del.push_back(subscriber.id);
                 Json::Value root;
                 root["type"] = "remove_subscriber";
                 root["streamId"] = subscriber.subscribe_to;
@@ -515,6 +460,56 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
                                    subscriber.reply_to,
                                    root);
             }
+        }
+
+        if (!subscriber.client_id.compare(client.id))
+        {
+            subscribers_to_del.push_back(subscriber.id);
+            Json::Value root;
+            root["type"] = "remove_subscriber";
+            root["streamId"] = subscriber.subscribe_to;
+            root["clientId"] = subscriber.client_id;
+            root["erizoId"] = subscriber.erizo_id;
+            root["agentId"] = subscriber.agent_id;
+            amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
+                               subscriber.reply_to,
+                               subscriber.reply_to,
+                               root);
+        }
+    }
+
+    std::vector<std::string> publishers_to_del;
+    for (const Publisher &publisher : publishers)
+    {
+        if (!publisher.client_id.compare(client.id))
+        {
+            publishers_to_del.push_back(publisher.id);
+            removePublisher(publisher.erizo_id, publisher.client_id, publisher.id);
+        }
+    }
+
+    if (!subscribers_to_del.empty() && redis_->removeSubscribers(client.room_id, subscribers_to_del))
+    {
+        ELOG_ERROR("Redis removeSubscriber failed");
+        return;
+    }
+
+    if (!publishers_to_del.empty() && redis_->removePublishers(client.room_id, publishers_to_del))
+    {
+        ELOG_ERROR("Redis removePublisher failed");
+        return;
+    }
+
+    if (redis_->removeClientRoomMapping(client.id))
+    {
+        ELOG_ERROR("Redis removeClientRoomMapping failed");
+        return;
+    }
+
+    if (redis_->removeClient(client.room_id, client.id))
+    {
+        ELOG_ERROR("Redis removeClient failed");
+        return;
     }
 }
 
@@ -545,15 +540,18 @@ std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::st
     else if (!event.compare("publish"))
         reply = handlePublish(client, data);
     else if (!event.compare("subscribe"))
+    {
         reply = handleSubscribe(client, data);
+        if (reply == Json::nullValue)
+            return "keep";
+    }
     else if (!event.compare("signaling_message"))
-        reply = handleSignaling(client, data);
-
+    {
+        handleSignaling(client, data);
+        return "keep";
+    }
     if (reply != Json::nullValue)
     {
-        if (reply.type() == Json::arrayValue && reply.size() == 0)
-            return "keep";
-
         Json::FastWriter writer;
         return writer.write(reply);
     }
@@ -616,7 +614,6 @@ Json::Value ErizoController::handleToken(Client &client, const Json::Value &root
 Json::Value ErizoController::handlePublish(Client &client, const Json::Value &root)
 {
     int ret;
-
     if (!root.isMember("label") ||
         root["label"].type() != Json::stringValue)
     {
@@ -636,8 +633,9 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     publisher.id = Utils::getStreamID();
     publisher.erizo_id = client.erizo_id;
     publisher.agent_id = client.agent_id;
+    publisher.client_id = client.id;
     publisher.label = label;
-    client.publishers.push_back(publisher);
+    // client.publishers.push_back(publisher);
 
     if (redis_->addPublisher(client.room_id, publisher))
     {
@@ -681,7 +679,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     subscriber.agent_id = client.agent_id;
     subscriber.subscribe_to = stream_id;
     subscriber.reply_to = amqp_signaling_->getReplyTo();
-    client.subscribers.push_back(subscriber);
+    // client.subscribers.push_back(subscriber);
 
     if (redis_->addSubscriber(client.room_id, subscriber))
     {
@@ -701,7 +699,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     return reply;
 }
 
-Json::Value ErizoController::handleSignaling(Client &client, const Json::Value &root)
+void ErizoController::handleSignaling(Client &client, const Json::Value &root)
 {
     if (!root.isMember("streamId") ||
         root["streamId"].type() != Json::stringValue ||
@@ -709,18 +707,11 @@ Json::Value ErizoController::handleSignaling(Client &client, const Json::Value &
         root["msg"].type() != Json::objectValue)
     {
         ELOG_ERROR("Signaling message data format error");
-        return Json::nullValue;
+        return;
     }
 
     std::string erizo_id = client.erizo_id;
     std::string client_id = client.id;
     std::string stream_id = root["streamId"].asString();
-
-    if (processSignaling(erizo_id, client_id, stream_id, root["msg"]))
-    {
-        ELOG_ERROR("processSignaling failed,client %s,stream %s", client_id, stream_id);
-        return Json::nullValue;
-    }
-
-    return Json::arrayValue;
+    processSignaling(erizo_id, client_id, stream_id, root["msg"]);
 }

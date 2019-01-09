@@ -172,7 +172,6 @@ int AMQPRPC::init()
                             ELOG_WARN("Rabbitmq rpc callback timeout");
                             cb.data = Json::nullValue;
                             cb.cond.notify_one();
-                            cb.ts = 0;
                         }
                     }
                 }
@@ -295,6 +294,8 @@ void AMQPRPC::sendMessage(const std::string &exchange,
 {
     Json::Value root;
     root["data"] = data;
+    root["corrID"] = Json::intValue;
+    root["replyTo"] = Json::stringValue;
     Json::FastWriter writer;
     std::string msg = writer.write(root);
 

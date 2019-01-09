@@ -16,8 +16,6 @@ struct Client
     std::string client_ip;
     uint16_t client_port;
     std::string reply_to;
-    std::vector<Publisher> publishers;
-    std::vector<Subscriber> subscribers;
 
     std::string toJSON() const
     {

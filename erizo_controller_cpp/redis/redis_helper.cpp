@@ -55,52 +55,21 @@ void RedisHelper::close()
     init_ = false;
 }
 
-int RedisHelper::addRoom(const Room &room)
-{
-    redisclient::RedisValue val;
-    val = command("HSET", {"rooms", room.id, room.toJSON()});
-    if (!val.isOk())
-        return 1;
-    return 0;
-}
-
-int RedisHelper::getRoom(const std::string &room_id, Room &room)
-{
-    redisclient::RedisValue val;
-    val = command("HGET", {"rooms", room_id});
-    if (!val.isOk() || !val.isString())
-        return 1;
-    if (Room::fromJSON(val.toString(), room))
-        return 1;
-    return 0;
-}
-
-int RedisHelper::getAllRoom(std::vector<Room> &rooms)
-{
-    redisclient::RedisValue val;
-    val = command("HVALS", {"rooms"});
-    if (!val.isOk() || !val.isArray())
-        return 1;
-
-    rooms.clear();
-    std::vector<redisclient::RedisValue> vec = val.toArray();
-    for (redisclient::RedisValue v : vec)
-    {
-        if (v.isString())
-        {
-            Room r;
-            if (!Room::fromJSON(v.toString(), r))
-                rooms.push_back(r);
-        }
-    }
-    return 0;
-}
-
 int RedisHelper::addClient(const std::string &room_id, const Client &client)
 {
     redisclient::RedisValue val;
     std::string key = "clients_" + room_id;
     val = command("HSET", {key, client.id, client.toJSON()});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::removeClient(const std::string &room_id, const std::string &client_id)
+{
+    redisclient::RedisValue val;
+    std::string key = "clients_" + room_id;
+    val = command("HDEL", {key, client_id});
     if (!val.isOk())
         return 1;
     return 0;
@@ -131,6 +100,15 @@ int RedisHelper::addClientRoomMapping(const std::string &client_id, const std::s
 {
     redisclient::RedisValue val;
     val = command("HSET", {"clients", client_id, room_id});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::removeClientRoomMapping(const std::string &client_id)
+{
+    redisclient::RedisValue val;
+    val = command("HDEL", {"clients", client_id});
     if (!val.isOk())
         return 1;
     return 0;
@@ -168,6 +146,22 @@ int RedisHelper::getPublisher(const std::string &room_id, const std::string &pub
     return 0;
 }
 
+int RedisHelper::removePublishers(const std::string &room_id, const std::vector<std::string> &publishers)
+{
+    std ::deque<redisclient::RedisBuffer> buffer;
+    redisclient::RedisValue val;
+    std::string key = "publishers_" + room_id;
+
+    buffer.push_back(key);
+    for (const std::string &publisher_id : publishers)
+        buffer.push_back(publisher_id);
+
+    val = command("HDEL", buffer);
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
 int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publisher> &publishers)
 {
     redisclient::RedisValue val;
@@ -199,6 +193,21 @@ int RedisHelper::addSubscriber(const std::string &room_id, const Subscriber &sub
     return 0;
 }
 
+int RedisHelper::removeSubscribers(const std::string &room_id, const std::vector<std::string> &subscribers)
+{
+    std ::deque<redisclient::RedisBuffer> buffer;
+    redisclient::RedisValue val;
+    std::string key = "subscribers_" + room_id;
+
+    buffer.push_back(key);
+    for (const std::string &subscriber_id : subscribers)
+        buffer.push_back(subscriber_id);
+    val = command("HDEL", buffer);
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
 int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscriber> &subscribers)
 {
     redisclient::RedisValue val;
@@ -220,10 +229,3 @@ int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscr
     }
     return 0;
 }
-
-int RedisHelper::removePublisher(const std::string &room_id, const std::string &publisher_id) { return 0; }
-int RedisHelper::removeSubscriber(const std::string &publisher_id, const std::string &subscriber_id) { return 0; }
-int RedisHelper::removeRoom(const std::string &room_id) { return 0; }
-// rooms [room1,room2,room3,room4]
-// room1 [publisher1,publisher1,publishers,publisher1]
-// publisher1 [subscriber1,subcriber2,subscriber3]

@@ -25,13 +25,17 @@ SocketIOServer::~SocketIOServer()
 int SocketIOServer::init()
 {
     if (init_)
-        return 0;
+        return 0;   
 
     run_ = true;
     threads_.resize(20);
     std::transform(threads_.begin(), threads_.end(), threads_.begin(), [&](std::thread *t) {
         return new std::thread([&]() {
+            //防止多线程创建hub出现段错误
+            mux_.lock();
             uWS::Hub hub;
+            mux_.unlock();
+
             hub.onConnection([&](uWS::WebSocket<uWS::SERVER> *ws, uWS::HttpRequest req) {
                 SocketIOClientHandler *hdl = new SocketIOClientHandler(ws, std::ref(on_message_hdl_), std::ref(on_close_hdl_));
                 std::string client_id = hdl->getClient().id;
