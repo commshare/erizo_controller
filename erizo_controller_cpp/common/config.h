@@ -44,6 +44,7 @@ public:
   std::string uniquecast_exchange_;
   std::string boardcast_exchange_;
 
+  int thread_num_;
   int worker_num_;
 
 private:

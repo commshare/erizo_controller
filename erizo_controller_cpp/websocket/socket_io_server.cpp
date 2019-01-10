@@ -29,7 +29,7 @@ int SocketIOServer::init()
         return 0;
 
     run_ = true;
-    threads_.resize(30);
+    threads_.resize(Config::getInstance()->thread_num_);
     std::transform(threads_.begin(), threads_.end(), threads_.begin(), [&](std::thread *t) {
         return new std::thread([&]() {
             //防止多线程创建hub出现段错误

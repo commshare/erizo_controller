@@ -13,8 +13,9 @@ struct Client
     std::string agent_id;
     std::string erizo_id;
     std::string room_id;
-    std::string client_ip;
-    uint16_t client_port;
+    std::string ip;
+    uint16_t port;
+    std::string family;
     std::string reply_to;
 
     std::string toJSON() const
@@ -24,8 +25,9 @@ struct Client
         root["agent_id"] = agent_id;
         root["erizo_id"] = erizo_id;
         root["room_id"] = room_id;
-        root["client_ip"] = client_ip;
-        root["client_port"] = client_port;
+        root["ip"] = ip;
+        root["port"] = port;
+        root["family"] = family;
         root["reply_to"] = reply_to;
         Json::FastWriter writer;
         return writer.write(root);
@@ -46,10 +48,12 @@ struct Client
             root["erizo_id"].type() != Json::stringValue ||
             !root.isMember("room_id") ||
             root["room_id"].type() != Json::stringValue ||
-            !root.isMember("client_ip") ||
-            root["client_ip"].type() != Json::stringValue ||
-            !root.isMember("client_port") ||
-            root["client_port"].type() != Json::intValue ||
+            !root.isMember("ip") ||
+            root["ip"].type() != Json::stringValue ||
+            !root.isMember("port") ||
+            root["port"].type() != Json::intValue ||
+            !root.isMember("family") ||
+            root["family"].type() != Json::stringValue ||
             !root.isMember("reply_to") ||
             root["reply_to"].type() != Json::stringValue)
             return 1;
@@ -58,8 +62,9 @@ struct Client
         client.agent_id = root["agent_id"].asString();
         client.erizo_id = root["erizo_id"].asString();
         client.room_id = root["room_id"].asString();
-        client.client_ip = root["client_ip"].asString();
-        client.client_port = root["client_port"].asInt();
+        client.ip = root["ip"].asString();
+        client.port = root["port"].asInt();
+        client.family = root["family"].asString();
         client.reply_to = root["reply_to"].asString();
         return 0;
     }

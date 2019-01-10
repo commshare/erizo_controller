@@ -29,7 +29,8 @@ Config::Config()
     uniquecast_exchange_ = "erizo_uniquecast_exchange";
     boardcast_exchange_ = "erizo_boardcast_exchange";
 
-    worker_num_ = 10;
+    worker_num_ = 5;
+    thread_num_ = 20;
 }
 
 Config *Config::getInstance()
@@ -135,6 +136,18 @@ int Config::init(const std::string &config_file)
         return 1;
     }
 
+    Json::Value other = root["other"];
+    if (!root.isMember("other") ||
+        other.type() != Json::objectValue ||
+        !other.isMember("worker_num") ||
+        other["worker_num"].type() != Json::intValue ||
+        !other.isMember("thread_num") ||
+        other["thread_num"].type() != Json::intValue)
+    {
+        ELOG_ERROR("Other config check error");
+        return 1;
+    }
+
     port_ = websocket["port"].asInt();
     ssl_ = websocket["ssl"].asBool();
     ssl_key_ = websocket["ssl_key"].asString();
@@ -157,6 +170,9 @@ int Config::init(const std::string &config_file)
     rabbitmq_timeout_ = rabbitmq["timeout"].asInt();
     uniquecast_exchange_ = rabbitmq["uniquecast_exchange"].asString();
     boardcast_exchange_ = rabbitmq["boardcast_exchange"].asString();
+
+    worker_num_ = other["worker_num"].asInt();
+    thread_num_ = other["thread_num"].asInt();
 
     return 0;
 }

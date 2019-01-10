@@ -9,7 +9,12 @@ SocketIOClientHandler::SocketIOClientHandler(uWS::WebSocket<uWS::SERVER> *ws,
                                                                                                                 on_close_hdl_(on_close)
 
 {
+    uS::Socket::Address addr = ws->getAddress();
     client_.id = Utils::getUUID();
+    client_.ip = addr.address;
+    client_.port = addr.port;
+    client_.family = addr.family;
+
     Json::Value handshake;
     handshake["sid"] = Utils::getUUID();
     handshake["upgrades"] = Json::arrayValue;

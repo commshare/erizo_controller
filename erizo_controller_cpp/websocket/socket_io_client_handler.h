@@ -45,7 +45,6 @@ class SocketIOClientHandler
                           const std::function<std::string(SocketIOClientHandler *hdl, const std::string &)> &on_message,
                           const std::function<void(SocketIOClientHandler *hdl)> &on_close);
     ~SocketIOClientHandler();
-    //   uS::Socket::Address address = ws->getAddress();
     void onMessage(const std::string &msg);
     void onClose();
 
