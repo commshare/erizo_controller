@@ -4,7 +4,8 @@
 
 DEFINE_LOGGER(SocketIOServer, "SocketIOServer");
 
-SocketIOServer::SocketIOServer() : run_(false),
+SocketIOServer::SocketIOServer() : send_thread_(nullptr),
+                                   run_(false),
                                    init_(false)
 {
     on_message_hdl_ = [&](SocketIOClientHandler *hdl, const std::string &msg) {
@@ -25,23 +26,23 @@ SocketIOServer::~SocketIOServer()
 int SocketIOServer::init()
 {
     if (init_)
-        return 0;   
+        return 0;
 
     run_ = true;
-    threads_.resize(20);
+    threads_.resize(30);
     std::transform(threads_.begin(), threads_.end(), threads_.begin(), [&](std::thread *t) {
         return new std::thread([&]() {
             //防止多线程创建hub出现段错误
-            mux_.lock();
+            clients_mux_.lock();
             uWS::Hub hub;
-            mux_.unlock();
+            clients_mux_.unlock();
 
             hub.onConnection([&](uWS::WebSocket<uWS::SERVER> *ws, uWS::HttpRequest req) {
                 SocketIOClientHandler *hdl = new SocketIOClientHandler(ws, std::ref(on_message_hdl_), std::ref(on_close_hdl_));
                 std::string client_id = hdl->getClient().id;
                 ws->setUserData(hdl);
 
-                std::unique_lock<std::mutex> lock(mux_);
+                std::unique_lock<std::mutex> lock(clients_mux_);
                 clients_[client_id] = hdl;
                 ELOG_INFO("client %s connect,num:%d", client_id, clients_.size());
             });
@@ -63,10 +64,11 @@ int SocketIOServer::init()
                     return;
 
                 SocketIOClientHandler *hdl = reinterpret_cast<SocketIOClientHandler *>(ptr);
+                hdl->setWebSocket(nullptr);
                 std::string client_id = hdl->getClient().id;
                 hdl->onClose();
 
-                std::unique_lock<std::mutex> lock(mux_);
+                std::unique_lock<std::mutex> lock(clients_mux_);
                 clients_.erase(client_id);
                 delete hdl;
                 ELOG_INFO("client %s disconnect,num:%d", client_id, clients_.size());
@@ -95,6 +97,24 @@ int SocketIOServer::init()
                 hub.run();
         });
     });
+
+    send_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+        while (run_)
+        {
+            std::unique_lock<std::mutex> lock(send_mux_);
+            while (!send_queue_.empty())
+            {
+                SIOData data = send_queue_.front();
+                send_queue_.pop();
+                std::unique_lock<std::mutex>(clients_mux_);
+                auto it = clients_.find(data.client_id);
+                if (it != clients_.end())
+                    it->second->sendEvent(data.message);
+            }
+            send_cond_.wait(lock);
+        }
+    }));
+
     init_ = true;
     return 0;
 }
@@ -105,6 +125,12 @@ void SocketIOServer::close()
         return;
 
     run_ = false;
+
+    send_cond_.notify_all();
+    send_thread_->join();
+    send_thread_.reset();
+    send_thread_ = nullptr;
+
     std::for_each(threads_.begin(), threads_.end(), [](std::thread *t) {
         t->join();
     });
@@ -118,8 +144,7 @@ void SocketIOServer::close()
 
 void SocketIOServer::sendEvent(const std::string &client_id, const std::string &msg)
 {
-    std::unique_lock<std::mutex>(mux_);
-    auto it = clients_.find(client_id);
-    if (it != clients_.end())
-        it->second->sendEvent(msg);
+    std::unique_lock<std::mutex> lock(send_mux_);
+    send_queue_.push({client_id, msg});
+    send_cond_.notify_one();
 }

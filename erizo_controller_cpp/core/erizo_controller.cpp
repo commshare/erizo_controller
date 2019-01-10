@@ -679,8 +679,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     subscriber.agent_id = client.agent_id;
     subscriber.subscribe_to = stream_id;
     subscriber.reply_to = amqp_signaling_->getReplyTo();
-    // client.subscribers.push_back(subscriber);
-
+   
     if (redis_->addSubscriber(client.room_id, subscriber))
     {
         ELOG_ERROR("Add Subscriber to redis failed");

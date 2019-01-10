@@ -52,7 +52,6 @@ class Utils
 
     static std::string getStreamID()
     {
-        srand(time(0));
         std::stringstream oss;
         for (int i = 0; i < 18; i++)
         {

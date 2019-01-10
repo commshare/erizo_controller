@@ -35,7 +35,9 @@ class AMQPRPC
         Json::Value data;
         std::condition_variable cond;
         std::mutex mux;
-
+        //******************DEBUG*****************
+        std::string dump;
+        //******************DEBUG*****************
         AMQPCallback()
         {
             ts = 0;

@@ -91,7 +91,9 @@ void SocketIOClientHandler::onClose()
 
 void SocketIOClientHandler::sendMessage(const std::string &msg)
 {
-    ws_->send(msg.c_str(), msg.length(), uWS::OpCode::TEXT);
+    std::unique_lock<std::mutex>(mux_);
+    if (ws_ != nullptr)
+        ws_->send(msg.c_str(), msg.length(), uWS::OpCode::TEXT);
 }
 
 void SocketIOClientHandler::sendEvent(const std::string &msg)

@@ -3,6 +3,8 @@
 
 #include <string>
 #include <functional>
+#include <thread>
+#include <mutex>
 
 #include <uWS/uWS.h>
 #include <json/json.h>
@@ -43,7 +45,7 @@ class SocketIOClientHandler
                           const std::function<std::string(SocketIOClientHandler *hdl, const std::string &)> &on_message,
                           const std::function<void(SocketIOClientHandler *hdl)> &on_close);
     ~SocketIOClientHandler();
-//   uS::Socket::Address address = ws->getAddress();
+    //   uS::Socket::Address address = ws->getAddress();
     void onMessage(const std::string &msg);
     void onClose();
 
@@ -52,6 +54,11 @@ class SocketIOClientHandler
     Client &getClient()
     {
         return client_;
+    }
+    void setWebSocket(uWS::WebSocket<uWS::SERVER> *ws)
+    {
+        std::unique_lock<std::mutex>(mux_);
+        ws_ = ws;
     }
 
   private:
@@ -62,6 +69,7 @@ class SocketIOClientHandler
     uWS::WebSocket<uWS::SERVER> *ws_;
     std::function<std::string(SocketIOClientHandler *hdl, const std::string &)> on_message_hdl_;
     std::function<void(SocketIOClientHandler *hdl)> on_close_hdl_;
+    std::mutex mux_;
 };
 
 #endif

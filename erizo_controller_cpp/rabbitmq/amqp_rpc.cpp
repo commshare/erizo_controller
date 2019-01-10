@@ -169,7 +169,9 @@ int AMQPRPC::init()
                         int dur = (int)(now - cb.ts);
                         if (dur > Config::getInstance()->rabbitmq_timeout_)
                         {
-                            ELOG_WARN("Rabbitmq rpc callback timeout");
+                            //******************DEBUG*****************
+                            ELOG_WARN("rpc timeout,dump-->%s", cb.dump);
+                            //******************DEBUG*****************
                             cb.data = Json::nullValue;
                             cb.cond.notify_one();
                         }
@@ -258,11 +260,16 @@ void AMQPRPC::addRPC(const std::string &exchange,
     index_++;
     index_ = index_ % kQueueSize;
 
-    std::thread([&, this, func, corrid]() {
+    std::thread([&]() {
         AMQPCallback &cb = cb_queue_[corrid];
         std::unique_lock<std::mutex> lock(cb.mux);
         if (cb.ts == 0)
         {
+            Json::FastWriter writer;
+            //******************DEBUG*****************
+            std::string msg = writer.write(data);
+            cb.dump = msg;
+            //******************DEBUG*****************
             cb.ts = Utils::getCurrentMs();
             cb.data = Json::nullValue;
             cb.cond.wait(lock);
