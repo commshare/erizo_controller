@@ -22,10 +22,7 @@ AMQPRPC::~AMQPRPC()
 int AMQPRPC::init()
 {
     if (init_)
-    {
-        ELOG_WARN("AMQPRPC duplicate initialize,just return!!!");
         return 0;
-    }
 
     amqp_rpc_reply_t res;
     conn_ = amqp_new_connection();
@@ -111,11 +108,6 @@ int AMQPRPC::init()
 
     run_ = true;
     recv_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
-        /*
-         * 当rpc完成后,远端回送的数据会在这里接收,收到数据后,释放回调队列里条件变量
-         * 原先阻塞的线程开始执行
-         */
-
         while (run_)
         {
             amqp_rpc_reply_t res;
@@ -184,10 +176,8 @@ int AMQPRPC::init()
 void AMQPRPC::close()
 {
     if (!init_)
-    {
-        ELOG_WARN("AMQPRPC didn't initialize,can't close!!!");
         return;
-    }
+
     run_ = false;
 
     check_thread_->join();

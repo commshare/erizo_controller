@@ -108,7 +108,7 @@ int ErizoController::allocAgent(Client &client)
             return 1;
         }
 
-        uint64_t now = Utils::getCurrentMs();
+        uint64_t now = Utils::getSystemMs();
         std::vector<ErizoAgent> agents_alive;
         for (const ErizoAgent &agent : agents)
         {

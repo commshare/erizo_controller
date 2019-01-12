@@ -13,7 +13,6 @@
 #include "rabbitmq/amqp_rpc.h"
 #include "rabbitmq/amqp_recv.h"
 #include "model/client.h"
-#include "thread/thread_pool.h"
 #include "common/config.h"
 
 class ErizoController
