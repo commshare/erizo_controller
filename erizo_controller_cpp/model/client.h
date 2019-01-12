@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "route/IpTable.h"
 #include "publisher.h"
 #include "subscriber.h"
 
@@ -17,6 +18,8 @@ struct Client
     uint16_t port;
     std::string family;
     std::string reply_to;
+
+    edu::iptable::IP_TABLE_VALUE ip_info;
 
     std::string toJSON() const
     {

@@ -44,7 +44,6 @@ int SocketIOServer::init()
 
                 std::unique_lock<std::mutex> lock(clients_mux_);
                 clients_[client_id] = hdl;
-                ELOG_INFO("client %s connect,num:%d", client_id, clients_.size());
             });
 
             hub.onMessage([&](uWS::WebSocket<uWS::SERVER> *ws, char *data, size_t len, uWS::OpCode op_codec) {
@@ -71,7 +70,6 @@ int SocketIOServer::init()
                 std::unique_lock<std::mutex> lock(clients_mux_);
                 clients_.erase(client_id);
                 delete hdl;
-                ELOG_INFO("client %s disconnect,num:%d", client_id, clients_.size());
             });
 
             if (Config::getInstance()->ssl_)

@@ -26,7 +26,3 @@ target_link_libraries(erizo_controller_cpp ${Boost_LIBRARIES} ssl crypto pthread
 
 install(TARGETS erizo_controller_cpp RUNTIME DESTINATION bin)
 
-
-#we can install mysql-connector-cpp throught 
-#apt-cache search libmysql
-#libmysql++-dev

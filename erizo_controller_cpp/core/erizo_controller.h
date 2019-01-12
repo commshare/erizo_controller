@@ -16,13 +16,6 @@
 #include "thread/thread_pool.h"
 #include "common/config.h"
 
-struct ErizoAgent
-{
-  std::string id;
-  std::string ip;
-  int timeout;
-};
-
 class ErizoController
 {
   DECLARE_LOGGER();
@@ -40,6 +33,10 @@ private:
   void asyncTask(const std::function<void()> &func);
 
   int rpc(const std::string &queuename, const Json::Value &data);
+
+  int allocAgent(Client &client);
+
+  int allocErizo(Client &client);
 
   int addPublisher(const std::string &erizo_id,
                    const std::string &client_id,
@@ -59,9 +56,6 @@ private:
                         const std::string &client_id,
                         const std::string &stream_id);
 
-  int getErizo(const std::string &agent_id,
-               const std::string &room_id,
-               std::string &erizo_id);
   void processSignaling(const std::string &erizo_id,
                         const std::string &client_id,
                         const std::string &stream_id,

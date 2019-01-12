@@ -1,4 +1,6 @@
 #include "socket_io_client_handler.h"
+#include "route/route.h"
+#include "common/utils.h"
 
 DEFINE_LOGGER(SocketIOClientHandler, "SocketIOClientHandler");
 
@@ -14,6 +16,17 @@ SocketIOClientHandler::SocketIOClientHandler(uWS::WebSocket<uWS::SERVER> *ws,
     client_.ip = addr.address;
     client_.port = addr.port;
     client_.family = addr.family;
+
+    if (!client_.family.compare("IPv4"))
+    {
+        client_.ip_info = Route::getInstance()->processIP(client_.ip);
+    }
+    else
+    {
+        std::string ipv4_addr;
+        if (!Utils::searchAddress(addr.address, ipv4_addr))
+            client_.ip_info = Route::getInstance()->processIP(ipv4_addr);
+    }
 
     Json::Value handshake;
     handshake["sid"] = Utils::getUUID();

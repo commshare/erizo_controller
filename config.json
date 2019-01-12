@@ -28,6 +28,8 @@
     },
     "other": {
         "thread_num": 20,
-        "worker_num": 5
+        "worker_num": 5,
+        "default_area": "default_area",
+        "erizo_agent_timeout": 10000
     }
 }

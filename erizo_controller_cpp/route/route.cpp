@@ -4,9 +4,9 @@
 
 DEFINE_LOGGER(Route, "Route");
 
-int Route::init()
+int Route::init(const std::string &iptable_path)
 {
-    if (!ip_table_.loadIspIpDataFile("iptable"))
+    if (!ip_table_.loadIspIpDataFile(iptable_path))
     {
         ELOG_ERROR("load iptable failed");
         return 1;

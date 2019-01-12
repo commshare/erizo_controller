@@ -31,6 +31,8 @@ Config::Config()
 
     worker_num_ = 5;
     thread_num_ = 20;
+    default_area_ = "default_area";
+    erizo_agent_timeout_ = 10000;
 }
 
 Config *Config::getInstance()
@@ -142,7 +144,11 @@ int Config::init(const std::string &config_file)
         !other.isMember("worker_num") ||
         other["worker_num"].type() != Json::intValue ||
         !other.isMember("thread_num") ||
-        other["thread_num"].type() != Json::intValue)
+        other["thread_num"].type() != Json::intValue ||
+        !other.isMember("default_area") ||
+        other["default_area"].type() != Json::stringValue ||
+        !other.isMember("erizo_agent_timeout") ||
+        other["erizo_agent_timeout"].type() != Json::intValue)
     {
         ELOG_ERROR("Other config check error");
         return 1;
@@ -173,6 +179,8 @@ int Config::init(const std::string &config_file)
 
     worker_num_ = other["worker_num"].asInt();
     thread_num_ = other["thread_num"].asInt();
+    default_area_ = other["default_area"].asString();
+    erizo_agent_timeout_ = other["erizo_agent_timeout"].asInt();
 
     return 0;
 }

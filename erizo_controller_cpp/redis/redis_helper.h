@@ -12,6 +12,7 @@
 #include "model/subscriber.h"
 #include "model/room.h"
 #include "model/client.h"
+#include "model/erizo_agent.h"
 
 #include "common/logger.h"
 
@@ -42,6 +43,8 @@ public:
   int addSubscriber(const std::string &room_id, const Subscriber &subscriber);
   int removeSubscribers(const std::string &room_id, const std::vector<std::string> &subscribers);
   int getAllSubscriber(const std::string &room_id, std::vector<Subscriber> &subscribers);
+
+  int getAllErizoAgent(const std::string &area, std::vector<ErizoAgent> &agents);
 
 private:
   redisclient::RedisValue command(const std::string cmd, const std ::deque<redisclient::RedisBuffer> &buffer);

@@ -229,3 +229,24 @@ int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscr
     }
     return 0;
 }
+
+int RedisHelper::getAllErizoAgent(const std::string &area, std::vector<ErizoAgent> &agents)
+{
+    redisclient::RedisValue val;
+    val = command("HVALS", {area});
+    if (!val.isOk())
+        return 1;
+
+    agents.clear();
+    std::vector<redisclient::RedisValue> vec = val.toArray();
+    for (redisclient::RedisValue v : vec)
+    {
+        if (v.isString())
+        {
+            ErizoAgent a;
+            if (!ErizoAgent::fromJSON(v.toString(), a))
+                agents.push_back(a);
+        }
+    }
+    return 0;
+}

@@ -46,6 +46,8 @@ public:
 
   int thread_num_;
   int worker_num_;
+  std::string default_area_;
+  int erizo_agent_timeout_;
 
 private:
   Config();
