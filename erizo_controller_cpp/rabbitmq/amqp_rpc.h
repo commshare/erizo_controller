@@ -52,12 +52,14 @@ class AMQPRPC
 
     int init();
     void close();
-    void addRPC(const std::string &exchange,
-                const std::string &queuename,
-                const std::string &binding_key,
-                const Json::Value &data,
-                const std::function<void(const Json::Value &)> &func);
+    void rpc(const std::string &exchange,
+             const std::string &queuename,
+             const std::string &binding_key,
+             const Json::Value &data,
+             const std::function<void(const Json::Value &)> &func);
 
+    int rpc(const std::string &queuename, const Json::Value &data);
+    void rpcNotReply(const std::string &queuename, const Json::Value &data);
     void sendMessage(const std::string &exchange,
                      const std::string &queuename,
                      const std::string &binding_key,
@@ -66,13 +68,12 @@ class AMQPRPC
   private:
     int checkError(amqp_rpc_reply_t x);
     void handleCallback(const std::string &msg);
-    int callback(const std::string &exchange,
-                 const std::string &queuename,
-                 const std::string &binding_key,
-                 const std::string &send_msg);
+    int send(const std::string &exchange,
+             const std::string &queuename,
+             const std::string &binding_key,
+             const std::string &send_msg);
 
     std::string stringifyBytes(amqp_bytes_t bytes);
-    void asyncTask(const std::function<void()> &func);
 
   private:
     bool init_;
@@ -84,7 +85,7 @@ class AMQPRPC
     std::unique_ptr<std::thread> check_thread_;
 
     std::string reply_to_;
-    std::atomic<int> index_;
+    std::atomic<uint32_t> index_;
     std::vector<AMQPCallback> cb_queue_;
 
     std::mutex send_queue_mux_;

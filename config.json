@@ -27,8 +27,8 @@
         "boardcast_exchange": "erizo_boardcast_exchange"
     },
     "other": {
-        "thread_num": 20,
-        "worker_num": 5,
+        "thread_num": 10,
+        "worker_num": 10,
         "default_area": "default_area",
         "erizo_agent_timeout": 10000
     }

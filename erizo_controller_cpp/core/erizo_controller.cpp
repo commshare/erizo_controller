@@ -147,7 +147,7 @@ int ErizoController::allocErizo(Client &client)
     {
         try_time--;
         callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &client, &ret, &callback_done](const Json::Value &root) {
+        amqp_->rpc(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &client, &ret, &callback_done](const Json::Value &root) {
             if (root.type() == Json::nullValue)
             {
                 ret = 1;
@@ -304,38 +304,6 @@ void ErizoController::onSignalingMessage(const std::string &msg)
     });
 }
 
-int ErizoController::rpc(const std::string &queuename, const Json::Value &data)
-{
-    int ret;
-    std::atomic<bool> callback_done;
-    int try_time = 3;
-    do
-    {
-        try_time--;
-        callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &ret, &callback_done](const Json::Value &root) {
-            if (root.type() == Json::nullValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            if (!root.isMember("ret") ||
-                root["ret"].type() != Json::intValue)
-            {
-                ret = 1;
-                callback_done = true;
-                return;
-            }
-            ret = root["ret"].asInt();
-            callback_done = true;
-        });
-        while (!callback_done)
-            usleep(0);
-    } while (ret && try_time);
-    return ret;
-}
-
 void ErizoController::removePublisher(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
 {
     std::string queuename = erizo_id;
@@ -345,7 +313,7 @@ void ErizoController::removePublisher(const std::string &erizo_id, const std::st
     args[0] = client_id;
     args[1] = stream_id;
     data["args"] = args;
-    rpc(queuename, data);
+    amqp_->rpcNotReply(queuename, data);
 }
 
 void ErizoController::removeSubscriber(const std::string &erizo_id, const std::string &client_id, const std::string &stream_id)
@@ -357,7 +325,7 @@ void ErizoController::removeSubscriber(const std::string &erizo_id, const std::s
     args[0] = client_id;
     args[1] = stream_id;
     data["args"] = args;
-    rpc(queuename, data);
+    amqp_->rpcNotReply(queuename, data);
 }
 
 void ErizoController::notifyToSubscribe(const std::string &client_id, const std::string &stream_id)
@@ -416,7 +384,7 @@ int ErizoController::addPublisher(const std::string &erizo_id,
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
     data["args"] = args;
-    return rpc(queuename, data);
+    return amqp_->rpc(queuename, data);
 }
 
 int ErizoController::addSubscriber(const std::string &erizo_id,
@@ -433,7 +401,7 @@ int ErizoController::addSubscriber(const std::string &erizo_id,
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
     data["args"] = args;
-    return rpc(queuename, data);
+    return amqp_->rpc(queuename, data);
 }
 
 void ErizoController::processSignaling(const std::string &erizo_id,

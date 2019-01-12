@@ -19,12 +19,6 @@ AMQPRPC::~AMQPRPC()
 {
 }
 
-void AMQPRPC::asyncTask(const std::function<void()> &func)
-{
-    std::shared_ptr<erizo::Worker> worker = thread_pool_->getLessUsedWorker();
-    worker->task(func);
-}
-
 int AMQPRPC::init()
 {
     if (init_)
@@ -151,16 +145,13 @@ int AMQPRPC::init()
         while (run_)
         {
             std::unique_lock<std::mutex> lock(send_queue_mux_);
-            if (!send_queue_.empty())
+            while (!send_queue_.empty())
             {
                 AMQPData data = send_queue_.front();
                 send_queue_.pop();
-                callback(data.exchange, data.queuename, data.binding_key, data.msg);
+                send(data.exchange, data.queuename, data.binding_key, data.msg);
             }
-            else
-            {
-                send_cond_.wait(lock);
-            }
+            send_cond_.wait(lock);
         }
     }));
 
@@ -175,11 +166,9 @@ int AMQPRPC::init()
                 {
                     if (now - cb.ts > (uint64_t)Config::getInstance()->rabbitmq_timeout_)
                     {
-                        //******************DEBUG*****************
-                        ELOG_DEBUG("rpc timeout,dump-->%s", cb.dump);
-                        //******************DEBUG*****************
                         cb.func(Json::nullValue);
                         cb.ts = 0;
+                        ELOG_WARN("RPC timeout,dump:%s", cb.dump.c_str());
                     }
                 }
             }
@@ -237,44 +226,40 @@ void AMQPRPC::close()
 
 void AMQPRPC::handleCallback(const std::string &msg)
 {
-    asyncTask([this, msg]() {
-        Json::Value root;
-        Json::Reader reader;
-        if (!reader.parse(msg, root))
-            return;
+    Json::Value root;
+    Json::Reader reader;
+    if (!reader.parse(msg, root))
+        return;
 
-        if (!root.isMember("corrID") ||
-            root["corrID"].type() != Json::intValue ||
-            !root.isMember("data") ||
-            root["data"].type() != Json::objectValue)
-            return;
+    if (!root.isMember("corrID") ||
+        root["corrID"].type() != Json::intValue ||
+        !root.isMember("data") ||
+        root["data"].type() != Json::objectValue)
+        return;
 
-        int corrid = root["corrID"].asInt();
-        Json::Value data = root["data"];
+    int corrid = root["corrID"].asInt();
+    Json::Value data = root["data"];
 
-        if (corrid < 0 || corrid > kQueueSize)
-            return;
+    if (corrid < 0 || corrid > kQueueSize)
+        return;
 
-        AMQPCallback &cb = cb_queue_[corrid];
-        std::unique_lock<std::mutex>(cb.mux);
-        if (cb.ts > 0)
-        {
-            cb.func(data);
-            cb.ts = 0;
-        }
-    });
+    AMQPCallback &cb = cb_queue_[corrid];
+    std::unique_lock<std::mutex>(cb.mux);
+    if (cb.ts > 0)
+    {
+        cb.func(data);
+        cb.ts = 0;
+    }
 }
 
-void AMQPRPC::addRPC(const std::string &exchange,
-                     const std::string &queuename,
-                     const std::string &binding_key,
-                     const Json::Value &data,
-                     const std::function<void(const Json::Value &)> &func)
+void AMQPRPC::rpc(const std::string &exchange,
+                  const std::string &queuename,
+                  const std::string &binding_key,
+                  const Json::Value &data,
+                  const std::function<void(const Json::Value &)> &func)
 {
     std::unique_lock<std::mutex> lock(send_queue_mux_);
-    int corrid = index_ % kQueueSize;
-    index_++;
-    index_ = index_ % kQueueSize;
+    int corrid = index_++ % kQueueSize;
 
     {
         AMQPCallback &cb = cb_queue_[corrid];
@@ -303,6 +288,51 @@ void AMQPRPC::addRPC(const std::string &exchange,
     std::string msg = writer.write(root);
 
     send_queue_.push({exchange, queuename, binding_key, msg});
+    send_cond_.notify_one();
+}
+
+int AMQPRPC::rpc(const std::string &queuename, const Json::Value &data)
+{
+    int ret;
+    std::atomic<bool> callback_done;
+    int try_time = 3;
+    do
+    {
+        try_time--;
+        callback_done = false;
+        rpc(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &ret, &callback_done](const Json::Value &root) {
+            if (root.type() == Json::nullValue)
+            {
+                ret = 1;
+                callback_done = true;
+                return;
+            }
+            if (!root.isMember("ret") ||
+                root["ret"].type() != Json::intValue)
+            {
+                ret = 1;
+                callback_done = true;
+                return;
+            }
+            ret = root["ret"].asInt();
+            callback_done = true;
+        });
+        while (!callback_done)
+            usleep(0);
+    } while (ret && try_time);
+    return ret;
+}
+
+void AMQPRPC::rpcNotReply(const std::string &queuename, const Json::Value &data)
+{
+    Json::Value root;
+    root["corrID"] = -1;
+    root["replyTo"] = Json::stringValue;
+    root["data"] = data;
+    Json::FastWriter writer;
+    std::string msg = writer.write(root);
+
+    send_queue_.push({Config::getInstance()->uniquecast_exchange_, queuename, queuename, msg});
     send_cond_.notify_one();
 }
 
@@ -390,7 +420,7 @@ int AMQPRPC::checkError(amqp_rpc_reply_t x)
     return 1;
 }
 
-int AMQPRPC::callback(const std::string &exchange, const std::string &queuename, const std::string &binding_key, const std::string &send_msg)
+int AMQPRPC::send(const std::string &exchange, const std::string &queuename, const std::string &binding_key, const std::string &send_msg)
 {
     amqp_basic_properties_t props;
     props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG;
