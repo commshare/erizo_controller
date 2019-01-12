@@ -42,10 +42,10 @@ int ErizoController::init()
         ELOG_ERROR("SocketIO server initialize failed");
         return 1;
     }
-    socket_io_->onMessage([&](SocketIOClientHandler *hdl, const std::string &msg) {
+    socket_io_->onMessage([this](SocketIOClientHandler *hdl, const std::string &msg) {
         return onMessage(hdl, msg);
     });
-    socket_io_->onClose([&](SocketIOClientHandler *hdl) {
+    socket_io_->onClose([this](SocketIOClientHandler *hdl) {
         onClose(hdl);
     });
 
@@ -57,7 +57,7 @@ int ErizoController::init()
     }
 
     amqp_signaling_ = std::make_shared<AMQPRecv>();
-    if (amqp_signaling_->init([&](const std::string &msg) {
+    if (amqp_signaling_->init([this](const std::string &msg) {
             onSignalingMessage(msg);
         }))
     {
@@ -160,7 +160,7 @@ int ErizoController::allocErizo(Client &client)
                 callback_done = true;
                 return;
             }
-            
+
             ret = 0;
             client.erizo_id = root["erizoID"].asString();
             callback_done = true;
@@ -313,7 +313,7 @@ int ErizoController::rpc(const std::string &queuename, const Json::Value &data)
     {
         try_time--;
         callback_done = false;
-        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [&](const Json::Value &root) {
+        amqp_->addRPC(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &ret, &callback_done](const Json::Value &root) {
             if (root.type() == Json::nullValue)
             {
                 ret = 1;

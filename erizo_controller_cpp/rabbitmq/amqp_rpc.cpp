@@ -107,7 +107,7 @@ int AMQPRPC::init()
     cb_queue_.resize(kQueueSize);
 
     run_ = true;
-    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
         /*
          * 当rpc完成后,远端回送的数据会在这里接收,收到数据后,释放回调队列里条件变量
          * 原先阻塞的线程开始执行
@@ -139,7 +139,7 @@ int AMQPRPC::init()
         notifyAllCallbackThread();
     }));
 
-    send_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+    send_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
         while (run_)
         {
             std::unique_lock<std::mutex> lock(send_queue_mux_);
@@ -156,7 +156,7 @@ int AMQPRPC::init()
         }
     }));
 
-    check_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+    check_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
         while (run_)
         {
             {
@@ -260,7 +260,7 @@ void AMQPRPC::addRPC(const std::string &exchange,
     index_++;
     index_ = index_ % kQueueSize;
 
-    std::thread([&]() {
+    std::thread([this, data, func, corrid]() {
         AMQPCallback &cb = cb_queue_[corrid];
         std::unique_lock<std::mutex> lock(cb.mux);
         if (cb.ts == 0)

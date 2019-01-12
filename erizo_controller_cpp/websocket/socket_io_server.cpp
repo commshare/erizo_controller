@@ -8,12 +8,12 @@ SocketIOServer::SocketIOServer() : send_thread_(nullptr),
                                    run_(false),
                                    init_(false)
 {
-    on_message_hdl_ = [&](SocketIOClientHandler *hdl, const std::string &msg) {
+    on_message_hdl_ = [this](SocketIOClientHandler *hdl, const std::string &msg) {
         ELOG_WARN("receive message:%s,but message handler not set");
         return "disconnect";
     };
 
-    on_close_hdl_ = [&](SocketIOClientHandler *hdl) {
+    on_close_hdl_ = [this](SocketIOClientHandler *hdl) {
         ELOG_WARN("close handler not set");
         return;
     };
@@ -30,14 +30,14 @@ int SocketIOServer::init()
 
     run_ = true;
     threads_.resize(Config::getInstance()->thread_num_);
-    std::transform(threads_.begin(), threads_.end(), threads_.begin(), [&](std::thread *t) {
-        return new std::thread([&]() {
+    std::transform(threads_.begin(), threads_.end(), threads_.begin(), [this](std::thread *t) {
+        return new std::thread([this]() {
             //防止多线程创建hub出现段错误
             clients_mux_.lock();
             uWS::Hub hub;
             clients_mux_.unlock();
 
-            hub.onConnection([&](uWS::WebSocket<uWS::SERVER> *ws, uWS::HttpRequest req) {
+            hub.onConnection([this](uWS::WebSocket<uWS::SERVER> *ws, uWS::HttpRequest req) {
                 SocketIOClientHandler *hdl = new SocketIOClientHandler(ws, std::ref(on_message_hdl_), std::ref(on_close_hdl_));
                 std::string client_id = hdl->getClient().id;
                 ws->setUserData(hdl);
@@ -46,7 +46,7 @@ int SocketIOServer::init()
                 clients_[client_id] = hdl;
             });
 
-            hub.onMessage([&](uWS::WebSocket<uWS::SERVER> *ws, char *data, size_t len, uWS::OpCode op_codec) {
+            hub.onMessage([this](uWS::WebSocket<uWS::SERVER> *ws, char *data, size_t len, uWS::OpCode op_codec) {
                 if (op_codec == uWS::OpCode::TEXT)
                 {
                     void *ptr = ws->getUserData();
@@ -57,7 +57,7 @@ int SocketIOServer::init()
                 }
             });
 
-            hub.onDisconnection([&](uWS::WebSocket<uWS::SERVER> *ws, int code, char *data, size_t len) {
+            hub.onDisconnection([this](uWS::WebSocket<uWS::SERVER> *ws, int code, char *data, size_t len) {
                 void *ptr = ws->getUserData();
                 if (ptr == nullptr)
                     return;
@@ -96,7 +96,7 @@ int SocketIOServer::init()
         });
     });
 
-    send_thread_ = std::unique_ptr<std::thread>(new std::thread([&]() {
+    send_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
         while (run_)
         {
             std::unique_lock<std::mutex> lock(send_mux_);
