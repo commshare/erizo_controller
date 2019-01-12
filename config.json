@@ -13,12 +13,12 @@
         "password": "cathy978"
     },
     "redis": {
-        "ip": "127.0.0.1",
+        "ip": "172.19.5.28",
         "port": 6379,
         "password": "cathy978"
     },
     "rabbitmq": {
-        "host": "localhost",
+        "host": "172.19.5.28",
         "port": 5672,
         "username": "linmin",
         "password": "linmin",
