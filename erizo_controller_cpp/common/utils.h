@@ -50,6 +50,14 @@ class Utils
         return std::chrono::duration_cast<std::chrono::milliseconds>(now_since_epoch).count();
     }
 
+    static uint64_t getSystemMs()
+    {
+        auto now = std::chrono::system_clock::now();
+        auto now_since_epoch = now.time_since_epoch();
+        return std::chrono::duration_cast<std::chrono::milliseconds>(now_since_epoch).count();
+    }
+
+
     static std::string getStreamID()
     {
         std::stringstream oss;
