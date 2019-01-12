@@ -19,6 +19,12 @@ AMQPRPC::~AMQPRPC()
 {
 }
 
+void AMQPRPC::asyncTask(const std::function<void()> &func)
+{
+    std::shared_ptr<erizo::Worker> worker = thread_pool_->getLessUsedWorker();
+    worker->task(func);
+}
+
 int AMQPRPC::init()
 {
     if (init_)
@@ -104,6 +110,9 @@ int AMQPRPC::init()
         return 1;
     }
 
+    thread_pool_ = std::make_shared<erizo::ThreadPool>(Config::getInstance()->worker_num_);
+    thread_pool_->start();
+
     cb_queue_.resize(kQueueSize);
 
     run_ = true;
@@ -136,7 +145,6 @@ int AMQPRPC::init()
             handleCallback(msg);
             amqp_destroy_envelope(&envelope);
         }
-        notifyAllCallbackThread();
     }));
 
     send_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
@@ -159,26 +167,23 @@ int AMQPRPC::init()
     check_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
         while (run_)
         {
+            for (AMQPCallback &cb : cb_queue_)
             {
-                std::unique_ptr<std::mutex>(cb_queue_mux_);
                 uint64_t now = Utils::getCurrentMs();
-                for (AMQPCallback &cb : cb_queue_)
+                std::unique_lock<std::mutex>(cb.mux);
+                if (cb.ts > 0)
                 {
-                    if (cb.ts != 0)
+                    if (now - cb.ts > (uint64_t)Config::getInstance()->rabbitmq_timeout_)
                     {
-                        int dur = (int)(now - cb.ts);
-                        if (dur > Config::getInstance()->rabbitmq_timeout_)
-                        {
-                            //******************DEBUG*****************
-                            ELOG_WARN("rpc timeout,dump-->%s", cb.dump);
-                            //******************DEBUG*****************
-                            cb.data = Json::nullValue;
-                            cb.cond.notify_one();
-                        }
+                        //******************DEBUG*****************
+                        ELOG_DEBUG("rpc timeout,dump-->%s", cb.dump);
+                        //******************DEBUG*****************
+                        cb.func(Json::nullValue);
+                        cb.ts = 0;
                     }
                 }
             }
-            usleep(500000); //500ms
+            usleep(500000);
         }
     }));
 
@@ -195,10 +200,23 @@ void AMQPRPC::close()
         return;
     }
     run_ = false;
+
     check_thread_->join();
+    check_thread_.reset();
+    check_thread_ = nullptr;
+
     recv_thread_->join();
+    recv_thread_.reset();
+    recv_thread_ = nullptr;
+
     send_cond_.notify_all();
     send_thread_->join();
+    send_thread_.reset();
+    send_thread_ = nullptr;
+
+    thread_pool_->close();
+    thread_pool_.reset();
+    thread_pool_ = nullptr;
 
     amqp_channel_close(conn_, 1, AMQP_REPLY_SUCCESS);
     amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
@@ -215,38 +233,36 @@ void AMQPRPC::close()
 
     init_ = false;
     conn_ = nullptr;
-
-    check_thread_.reset();
-    check_thread_ = nullptr;
-    recv_thread_.reset();
-    recv_thread_ = nullptr;
-    send_thread_.reset();
-    send_thread_ = nullptr;
 }
 
 void AMQPRPC::handleCallback(const std::string &msg)
 {
-    Json::Value root;
-    Json::Reader reader;
-    if (!reader.parse(msg, root))
-        return;
+    asyncTask([this, msg]() {
+        Json::Value root;
+        Json::Reader reader;
+        if (!reader.parse(msg, root))
+            return;
 
-    if (!root.isMember("corrID") ||
-        root["corrID"].type() != Json::intValue ||
-        !root.isMember("data") ||
-        root["data"].type() != Json::objectValue)
-        return;
+        if (!root.isMember("corrID") ||
+            root["corrID"].type() != Json::intValue ||
+            !root.isMember("data") ||
+            root["data"].type() != Json::objectValue)
+            return;
 
-    int corrid = root["corrID"].asInt();
-    Json::Value data = root["data"];
+        int corrid = root["corrID"].asInt();
+        Json::Value data = root["data"];
 
-    if (corrid < 0 || corrid > kQueueSize)
-        return;
+        if (corrid < 0 || corrid > kQueueSize)
+            return;
 
-    std::unique_ptr<std::mutex>(cb_queue_mux_);
-    AMQPCallback &cb = cb_queue_[corrid];
-    cb.data = data;
-    cb.cond.notify_one();
+        AMQPCallback &cb = cb_queue_[corrid];
+        std::unique_lock<std::mutex>(cb.mux);
+        if (cb.ts > 0)
+        {
+            cb.func(data);
+            cb.ts = 0;
+        }
+    });
 }
 
 void AMQPRPC::addRPC(const std::string &exchange,
@@ -260,28 +276,24 @@ void AMQPRPC::addRPC(const std::string &exchange,
     index_++;
     index_ = index_ % kQueueSize;
 
-    std::thread([this, data, func, corrid]() {
+    {
         AMQPCallback &cb = cb_queue_[corrid];
         std::unique_lock<std::mutex> lock(cb.mux);
         if (cb.ts == 0)
         {
-            Json::FastWriter writer;
             //******************DEBUG*****************
+            Json::FastWriter writer;
             std::string msg = writer.write(data);
             cb.dump = msg;
             //******************DEBUG*****************
             cb.ts = Utils::getCurrentMs();
-            cb.data = Json::nullValue;
-            cb.cond.wait(lock);
-            func(cb.data);
-            cb.ts = 0;
+            cb.func = func;
         }
         else
         {
             func(Json::nullValue);
         }
-    })
-        .detach();
+    }
 
     Json::Value root;
     root["corrID"] = corrid;
@@ -376,13 +388,6 @@ int AMQPRPC::checkError(amqp_rpc_reply_t x)
         break;
     }
     return 1;
-}
-
-void AMQPRPC::notifyAllCallbackThread()
-{
-    std::unique_lock<std::mutex>(cb_queue_mux_);
-    for (AMQPCallback &cb : cb_queue_)
-        cb.cond.notify_all();
 }
 
 int AMQPRPC::callback(const std::string &exchange, const std::string &queuename, const std::string &binding_key, const std::string &send_msg)

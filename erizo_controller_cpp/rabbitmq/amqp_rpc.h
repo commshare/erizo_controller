@@ -15,6 +15,7 @@
 #include <amqp_tcp_socket.h>
 #include <json/json.h>
 
+#include "thread/thread_pool.h"
 #include "common/logger.h"
 
 class AMQPRPC
@@ -32,8 +33,7 @@ class AMQPRPC
     struct AMQPCallback
     {
         std::atomic<uint64_t> ts;
-        Json::Value data;
-        std::condition_variable cond;
+        std::function<void(const Json::Value &)> func;
         std::mutex mux;
         //******************DEBUG*****************
         std::string dump;
@@ -41,7 +41,7 @@ class AMQPRPC
         AMQPCallback()
         {
             ts = 0;
-            data = Json::nullValue;
+            func = std::function<void(const Json::Value &)>([](const Json::Value &) {});
         }
         AMQPCallback(const AMQPCallback &a) {}
     };
@@ -72,7 +72,7 @@ class AMQPRPC
                  const std::string &send_msg);
 
     std::string stringifyBytes(amqp_bytes_t bytes);
-    void notifyAllCallbackThread();
+    void asyncTask(const std::function<void()> &func);
 
   private:
     bool init_;
@@ -85,13 +85,13 @@ class AMQPRPC
 
     std::string reply_to_;
     std::atomic<int> index_;
-
-    std::mutex cb_queue_mux_;
     std::vector<AMQPCallback> cb_queue_;
 
     std::mutex send_queue_mux_;
     std::condition_variable send_cond_;
     std::queue<AMQPData> send_queue_;
+
+    std::shared_ptr<erizo::ThreadPool> thread_pool_;
 };
 
 #endif

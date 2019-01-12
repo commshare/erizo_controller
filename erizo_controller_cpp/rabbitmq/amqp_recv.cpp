@@ -138,7 +138,7 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
     }
 
     run_ = true;
-    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([&, func]() {
+    recv_thread_ = std::unique_ptr<std::thread>(new std::thread([this, func]() {
         while (run_)
         {
             amqp_rpc_reply_t res;
