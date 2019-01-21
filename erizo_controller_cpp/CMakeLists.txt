@@ -22,7 +22,7 @@ file(GLOB_RECURSE ERIZO_CONTROLLER_CPP_SOURCES "${ERIZO_CONTROLLER_CPP_SOURCE_DI
 
 add_executable(erizo_controller_cpp ${ERIZO_CONTROLLER_CPP_SOURCES})
 
-target_link_libraries(erizo_controller_cpp ${Boost_LIBRARIES} ssl crypto pthread log4cxx jsoncpp mysqlcppconn rabbitmq uWS z ssl crypto)
+target_link_libraries(erizo_controller_cpp ${Boost_LIBRARIES} ssl crypto pthread log4cxx jsoncpp mysqlcppconn rabbitmq uWS z ssl crypto acl_cpp protocol acl)
 
 install(TARGETS erizo_controller_cpp RUNTIME DESTINATION bin)
 

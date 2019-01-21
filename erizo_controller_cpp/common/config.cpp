@@ -20,6 +20,9 @@ Config::Config()
     redis_ip_ = "127.0.0.1";
     redis_port_ = 6379;
     redis_password_ = "cathy978";
+    redis_conn_timeout_ = 10;
+    redis_rw_timeout_ = 10;
+    redis_max_conns_ = 100;
 
     rabbitmq_username_ = "linmin";
     rabbitmq_passwd_ = "linmin";
@@ -110,7 +113,13 @@ int Config::init(const std::string &config_file)
         !redis.isMember("port") ||
         redis["port"].type() != Json::intValue ||
         !redis.isMember("password") ||
-        redis["password"].type() != Json::stringValue)
+        redis["password"].type() != Json::stringValue ||
+        !redis.isMember("conn_timeout") ||
+        redis["conn_timeout"].type() != Json::intValue ||
+        !redis.isMember("rw_timeout") ||
+        redis["rw_timeout"].type() != Json::intValue ||
+        !redis.isMember("max_conns") ||
+        redis["max_conns"].type() != Json::intValue)
     {
         ELOG_ERROR("Redis config check error");
         return 1;
@@ -168,6 +177,9 @@ int Config::init(const std::string &config_file)
     redis_ip_ = redis["ip"].asString();
     redis_port_ = redis["port"].asInt();
     redis_password_ = redis["password"].asString();
+    redis_conn_timeout_ = redis["conn_timeout"].asInt();
+    redis_rw_timeout_ = redis["rw_timeout"].asInt();
+    redis_max_conns_ = redis["max_conns"].asInt();
 
     rabbitmq_hostname_ = rabbitmq["host"].asString();
     rabbitmq_port_ = rabbitmq["port"].asInt();

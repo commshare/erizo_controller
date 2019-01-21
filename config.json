@@ -15,7 +15,10 @@
     "redis": {
         "ip": "172.19.5.28",
         "port": 6379,
-        "password": "cathy978"
+        "password": "cathy978",
+        "conn_timeout": 10,
+        "rw_timeout": 10,
+        "max_conns": 100
     },
     "rabbitmq": {
         "host": "172.19.5.28",

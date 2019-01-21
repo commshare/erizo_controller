@@ -248,7 +248,6 @@ void AMQPRPC::rpc(const std::string &exchange,
                   const Json::Value &data,
                   const std::function<void(const Json::Value &)> &func)
 {
-    std::unique_lock<std::mutex> lock(send_queue_mux_);
     int corrid = index_++ % kQueueSize;
 
     {
@@ -277,6 +276,7 @@ void AMQPRPC::rpc(const std::string &exchange,
     Json::FastWriter writer;
     std::string msg = writer.write(root);
 
+    std::unique_lock<std::mutex> lock(send_queue_mux_);
     send_queue_.push({exchange, queuename, binding_key, msg});
     send_cond_.notify_one();
 }
@@ -322,6 +322,7 @@ void AMQPRPC::rpcNotReply(const std::string &queuename, const Json::Value &data)
     Json::FastWriter writer;
     std::string msg = writer.write(root);
 
+    std::unique_lock<std::mutex> lock(send_queue_mux_);
     send_queue_.push({Config::getInstance()->uniquecast_exchange_, queuename, queuename, msg});
     send_cond_.notify_one();
 }

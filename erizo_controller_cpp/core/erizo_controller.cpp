@@ -97,6 +97,7 @@ void ErizoController::close()
     init_ = false;
 }
 
+int testtest = 1;
 int ErizoController::allocAgent(Client &client)
 {
     std::vector<ErizoAgent> agents;
@@ -116,17 +117,30 @@ int ErizoController::allocAgent(Client &client)
                 agents_alive.push_back(agent);
         }
 
-        if (agents_alive.size() == 0)
+        // if (agents_alive.size() == 0)
+        // {
+        //     ELOG_ERROR("not erizo agent alive");
+        //     return 1;
+        // }
+        if (agents_alive.size() < 2)
         {
             ELOG_ERROR("not erizo agent alive");
             return 1;
         }
 
-        std::sort(agents_alive.begin(), agents_alive.end(), [](ErizoAgent &a, ErizoAgent &b) {
-            return a.erizo_process_num < b.erizo_process_num;
-        });
-
-        client.agent_id = agents_alive[0].id;
+        // std::sort(agents_alive.begin(), agents_alive.end(), [](ErizoAgent &a, ErizoAgent &b) {
+        //     return a.erizo_process_num < b.erizo_process_num;
+        // });
+        if (testtest % 2 == 0)
+        {
+            client.agent_id = agents_alive[0].id;
+        }
+        else
+        {
+            client.agent_id = agents_alive[1].id;
+        }
+        testtest++;
+        // client.agent_id = agents_alive[0].id;
         return 0;
     }
     return 1;
@@ -154,7 +168,12 @@ int ErizoController::allocErizo(Client &client)
                 callback_done = true;
                 return;
             }
-            if (!root.isMember("erizoID") || root["erizoID"].type() != Json::stringValue)
+            if (!root.isMember("erizoID") ||
+                root["erizoID"].type() != Json::stringValue ||
+                !root.isMember("bridgeIP") ||
+                root["bridgeIP"].type() != Json::stringValue ||
+                !root.isMember("bridgePort") ||
+                root["bridgePort"].type() != Json::intValue)
             {
                 ret = 1;
                 callback_done = true;
@@ -163,6 +182,9 @@ int ErizoController::allocErizo(Client &client)
 
             ret = 0;
             client.erizo_id = root["erizoID"].asString();
+            client.bridge_ip = root["bridgeIP"].asString();
+            client.bridge_port = root["bridgePort"].asInt();
+
             callback_done = true;
         });
         while (!callback_done)
@@ -233,9 +255,20 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         }
         else if (!type.compare("publisher_answer"))
         {
+
             if (!data.isMember("sdp") ||
-                data["sdp"].type() != Json::stringValue)
+                data["sdp"].type() != Json::stringValue ||
+                !data.isMember("video_ssrc") ||
+               // data["video_ssrc"].type() != Json::intValue ||
+                !data.isMember("audio_ssrc") )//||
+                //data["audio_ssrc"].type() != Json::intValue)
                 return;
+
+            Stream stream;
+            stream.id = stream_id;
+            stream.video_ssrc = data["video_ssrc"].asUInt();
+            stream.audio_ssrc = data["audio_ssrc"].asUInt();
+            redis_->addStream(client_id, stream);
 
             Json::Value event;
             event[0] = "signaling_message_erizo";
@@ -387,6 +420,29 @@ int ErizoController::addPublisher(const std::string &erizo_id,
     return amqp_->rpc(queuename, data);
 }
 
+int ErizoController::addVirtualPublisher(const BridgeStream &bridge_stream)
+{
+    Stream stream;
+    if (redis_->getStream(bridge_stream.src_stream_id, stream))
+    {
+        ELOG_ERROR("redis getStream failed");
+        return 1;
+    }
+
+    std::string queuename = bridge_stream.recver_erizo_id;
+    Json::Value data;
+    data["method"] = "addVirtualPublisher";
+    Json::Value args;
+    args[0] = bridge_stream.id;            // bridge_stream id
+    args[1] = bridge_stream.src_stream_id; //src_stream_id
+    args[2] = bridge_stream.sender_ip;
+    args[3] = bridge_stream.sender_port;
+    args[4] = stream.video_ssrc;
+    args[5] = stream.audio_ssrc;
+    data["args"] = args;
+    return amqp_->rpc(queuename, data);
+}
+
 int ErizoController::addSubscriber(const std::string &erizo_id,
                                    const std::string &client_id,
                                    const std::string &stream_id,
@@ -400,6 +456,20 @@ int ErizoController::addSubscriber(const std::string &erizo_id,
     args[1] = stream_id;
     args[2] = label;
     args[3] = amqp_signaling_->getReplyTo();
+    data["args"] = args;
+    return amqp_->rpc(queuename, data);
+}
+
+int ErizoController::addVirtualSubscriber(const BridgeStream &bridge_stream)
+{
+    std::string queuename = bridge_stream.sender_erizo_id;
+    Json::Value data;
+    data["method"] = "addVirtualSubscriber";
+    Json::Value args;
+    args[0] = bridge_stream.id;            // bridge_stream id
+    args[1] = bridge_stream.src_stream_id; //src_stream_id
+    args[2] = bridge_stream.recver_ip;
+    args[3] = bridge_stream.recver_port;
     data["args"] = args;
     return amqp_->rpc(queuename, data);
 }
@@ -488,33 +558,19 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         }
     }
 
-    if (!subscribers_to_del.empty() && redis_->removeSubscribers(client.room_id, subscribers_to_del))
-    {
-        ELOG_ERROR("Redis removeSubscriber failed");
-        return;
-    }
+    if (!subscribers_to_del.empty())
+        redis_->removeSubscribers(client.room_id, subscribers_to_del);
 
-    if (!publishers_to_del.empty() && redis_->removePublishers(client.room_id, publishers_to_del))
-    {
-        ELOG_ERROR("Redis removePublisher failed");
-        return;
-    }
+    if (!publishers_to_del.empty())
+        redis_->removePublishers(client.room_id, publishers_to_del);
 
-    if (redis_->removeClientRoomMapping(client.id))
-    {
-        ELOG_ERROR("Redis removeClientRoomMapping failed");
-        return;
-    }
-
-    if (redis_->removeClient(client.room_id, client.id))
-    {
-        ELOG_ERROR("Redis removeClient failed");
-        return;
-    }
+    redis_->removeClientRoomMapping(client.id);
+    redis_->removeClient(client.room_id, client.id);
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
 {
+    ELOG_ERROR("%s",msg);
     Client &client = hdl->getClient();
     Json::Value root;
     Json::Reader reader;
@@ -629,6 +685,8 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     Publisher publisher;
     publisher.id = Utils::getStreamID();
     publisher.erizo_id = client.erizo_id;
+    publisher.bridge_ip = client.bridge_ip;
+    publisher.bridge_port = client.bridge_port;
     publisher.agent_id = client.agent_id;
     publisher.client_id = client.id;
     publisher.label = label;
@@ -656,7 +714,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     if (!root.isMember("streamId") ||
         root["streamId"].type() != Json::stringValue)
     {
-        ELOG_ERROR("Publish data format error");
+        ELOG_ERROR("Subscribe data format error");
         return Json::nullValue;
     }
 
@@ -669,9 +727,11 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     }
 
     Subscriber subscriber;
-    subscriber.id = Utils::getUUID();
+    subscriber.id = Utils::getStreamID();
     subscriber.client_id = client.id;
     subscriber.erizo_id = client.erizo_id;
+    subscriber.bridge_ip = client.bridge_ip;
+    subscriber.bridge_port = client.bridge_port;
     subscriber.agent_id = client.agent_id;
     subscriber.subscribe_to = stream_id;
     subscriber.reply_to = amqp_signaling_->getReplyTo();
@@ -680,6 +740,59 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     {
         ELOG_ERROR("Add Subscriber to redis failed");
         return Json::nullValue;
+    }
+
+    if (subscriber.agent_id.compare(publisher.agent_id) != 0)
+    {
+        std::vector<BridgeStream> bridge_streams;
+        if (redis_->getAllBridgeStream(client.room_id, bridge_streams))
+        {
+            ELOG_ERROR("get all bridge from redis stream failed");
+            return Json::nullValue;
+        }
+
+        auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [&stream_id](const BridgeStream &bridge_stream) {
+            if (!bridge_stream.src_stream_id.compare(stream_id))
+                return true;
+            return false;
+        });
+        if (it == bridge_streams.end())
+        {
+            BridgeStream bridge_stream;
+            bridge_stream.id = Utils::getStreamID();
+            bridge_stream.sender_erizo_id = publisher.erizo_id;
+            bridge_stream.sender_ip = publisher.bridge_ip;
+            bridge_stream.sender_port = publisher.bridge_port;
+            bridge_stream.recver_erizo_id = subscriber.erizo_id;
+            bridge_stream.recver_ip = subscriber.bridge_ip;
+            bridge_stream.recver_port = subscriber.bridge_port;
+            bridge_stream.src_stream_id = stream_id;
+            bridge_stream.room_id = client.room_id;
+
+            if (redis_->addBridgeStream(client.room_id, bridge_stream))
+            {
+                ELOG_ERROR("add bridge stream to redis failed");
+                return Json::nullValue;
+            }
+
+            if (addVirtualPublisher(bridge_stream))
+            {
+                ELOG_ERROR("add virtual publisher failed");
+                return Json::nullValue;
+            }
+
+            if (addVirtualSubscriber(bridge_stream))
+            {
+                ELOG_ERROR("add virtual subscriber failed");
+                return Json::nullValue;
+            }
+
+            // stream_id = bridge_stream.id;
+        }
+        // else
+        // {
+        //  stream_id = it->id;
+        // }
     }
 
     if (addSubscriber(client.erizo_id, client.id, stream_id, publisher.label))

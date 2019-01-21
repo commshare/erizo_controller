@@ -31,8 +31,6 @@ private:
 
   void asyncTask(const std::function<void()> &func);
 
-  int rpc(const std::string &queuename, const Json::Value &data);
-
   int allocAgent(Client &client);
 
   int allocErizo(Client &client);
@@ -46,6 +44,8 @@ private:
                        const std::string &client_id,
                        const std::string &stream_id);
 
+  int addVirtualPublisher(const BridgeStream &bridge_stream);
+
   int addSubscriber(const std::string &erizo_id,
                     const std::string &client_id,
                     const std::string &stream_id,
@@ -55,18 +55,31 @@ private:
                         const std::string &client_id,
                         const std::string &stream_id);
 
+  int addVirtualSubscriber(const BridgeStream &bridge_stream);
+
   void processSignaling(const std::string &erizo_id,
                         const std::string &client_id,
                         const std::string &stream_id,
                         const Json::Value &msg);
+
+  // void createBridgeStream(const std::string &sender_erizo_id,
+  //                         const std::string &sender_agent_id,
+  //                         const std::string &recver_erizo_id,
+  //                         const std::string &recver_agent_id,
+  //                         const std::string &stream_id);
+
   void onSignalingMessage(const std::string &msg);
 
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
 
   void onClose(SocketIOClientHandler *hdl);
+
   Json::Value handleToken(Client &client, const Json::Value &root);
+
   Json::Value handlePublish(Client &client, const Json::Value &root);
+
   Json::Value handleSubscribe(Client &client, const Json::Value &root);
+
   void handleSignaling(Client &client, const Json::Value &root);
 
 private:

@@ -12,7 +12,7 @@ SocketIOClientHandler::SocketIOClientHandler(uWS::WebSocket<uWS::SERVER> *ws,
 
 {
     uS::Socket::Address addr = ws->getAddress();
-    client_.id = Utils::getUUID();
+    client_.id = "cli_" + Utils::getUUID();
     client_.ip = addr.address;
     client_.port = addr.port;
     client_.family = addr.family;

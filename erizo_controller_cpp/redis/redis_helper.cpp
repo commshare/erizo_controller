@@ -105,6 +105,15 @@ int RedisHelper::addClientRoomMapping(const std::string &client_id, const std::s
     return 0;
 }
 
+bool RedisHelper::isClientExist(const std::string &client_id)
+{
+    redisclient::RedisValue val;
+    val = command("HGET", {"clients", client_id});
+    if (!val.isOk() || !val.isString())
+        return false;
+    return true;
+}
+
 int RedisHelper::removeClientRoomMapping(const std::string &client_id)
 {
     redisclient::RedisValue val;
@@ -248,5 +257,73 @@ int RedisHelper::getAllErizoAgent(const std::string &area, std::vector<ErizoAgen
                 agents.push_back(a);
         }
     }
+    return 0;
+}
+
+int RedisHelper::addBridgeStream(const std::string &room_id, const BridgeStream &bridge_stream)
+{
+    redisclient::RedisValue val;
+    std::string key = "bridge_stream_" + room_id;
+    val = command("HSET", {key, bridge_stream.id, bridge_stream.toJSON()});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getBridgeStream(const std::string &room_id, const std::string &bridge_stream_id, BridgeStream &bridge_stream)
+{
+    redisclient::RedisValue val;
+    std::string key = "bridge_stream_" + room_id;
+    val = command("HGET", {key, bridge_stream_id});
+    if (!val.isOk() || !val.isString())
+        return 1;
+    if (BridgeStream::fromJSON(val.toString(), bridge_stream))
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getAllBridgeStream(const std::string &room_id, std::vector<BridgeStream> &bridge_streams)
+{
+    redisclient::RedisValue val;
+    std::string key = "bridge_stream_" + room_id;
+    val = command("HVALS", {key});
+    if (!val.isOk())
+        return 1;
+
+    bridge_streams.clear();
+    std::vector<redisclient::RedisValue> vec = val.toArray();
+    for (redisclient::RedisValue v : vec)
+    {
+        if (v.isString())
+        {
+            BridgeStream s;
+            if (!BridgeStream::fromJSON(v.toString(), s))
+                bridge_streams.push_back(s);
+        }
+    }
+    return 0;
+}
+
+int RedisHelper::addStream(const std::string &client_id, const Stream &stream)
+{
+    redisclient::RedisValue val;
+
+    if (!isClientExist(client_id))
+        return 1;
+
+    val = command("HSET", {"stream", stream.id, stream.toJSON()});
+    if (!val.isOk())
+        return 1;
+    return 0;
+}
+
+int RedisHelper::getStream(const std::string &stream_id, Stream &stream)
+{
+    redisclient::RedisValue val;
+    val = command("HGET", {"stream", stream_id});
+    if (!val.isOk() || !val.isString())
+        return 1;
+    if (Stream::fromJSON(val.toString(), stream))
+        return 1;
     return 0;
 }

@@ -34,6 +34,9 @@ public:
   std::string redis_ip_;
   unsigned short redis_port_;
   std::string redis_password_;
+  int redis_conn_timeout_;
+  int redis_rw_timeout_;
+  int redis_max_conns_;
 
   //Rabbitmq config;
   std::string rabbitmq_username_;
