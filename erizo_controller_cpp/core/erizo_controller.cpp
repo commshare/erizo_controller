@@ -2,8 +2,7 @@
 
 DEFINE_LOGGER(ErizoController, "ErizoController");
 
-ErizoController::ErizoController() : redis_(nullptr),
-                                     socket_io_(nullptr),
+ErizoController::ErizoController() : socket_io_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
                                      thread_pool_(nullptr),
@@ -28,13 +27,6 @@ int ErizoController::init()
 
     thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->worker_num_));
     thread_pool_->start();
-
-    redis_ = std::make_shared<RedisHelper>();
-    if (redis_->init())
-    {
-        ELOG_ERROR("Redis initialize failed");
-        return 1;
-    }
 
     socket_io_ = std::make_shared<SocketIOServer>();
     if (socket_io_->init())
@@ -74,10 +66,6 @@ void ErizoController::close()
     if (!init_)
         return;
 
-    redis_->close();
-    redis_.reset();
-    redis_ = nullptr;
-
     socket_io_->close();
     socket_io_.reset();
     socket_io_ = nullptr;
@@ -103,7 +91,7 @@ int ErizoController::allocAgent(Client &client)
     std::vector<ErizoAgent> agents;
     if (client.ip_info.isp == edu::iptable::ISPType::AUTO_DETECT && client.ip_info.area == edu::iptable::AreaType::AREA_UNKNOWN)
     {
-        if (redis_->getAllErizoAgent(Config::getInstance()->default_area_, agents))
+        if (RedisHelper::getAllErizoAgent(Config::getInstance()->default_area_, agents))
         {
             ELOG_ERROR("getAllErizoAgent failed");
             return 1;
@@ -259,8 +247,8 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             if (!data.isMember("sdp") ||
                 data["sdp"].type() != Json::stringValue ||
                 !data.isMember("video_ssrc") ||
-               // data["video_ssrc"].type() != Json::intValue ||
-                !data.isMember("audio_ssrc") )//||
+                // data["video_ssrc"].type() != Json::intValue ||
+                !data.isMember("audio_ssrc")) //||
                 //data["audio_ssrc"].type() != Json::intValue)
                 return;
 
@@ -268,7 +256,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             stream.id = stream_id;
             stream.video_ssrc = data["video_ssrc"].asUInt();
             stream.audio_ssrc = data["audio_ssrc"].asUInt();
-            redis_->addStream(client_id, stream);
+            RedisHelper::addStream(client_id, stream);
 
             Json::Value event;
             event[0] = "signaling_message_erizo";
@@ -365,20 +353,20 @@ void ErizoController::notifyToSubscribe(const std::string &client_id, const std:
 {
     asyncTask([=]() {
         std::string room_id;
-        if (redis_->getRoomByClientId(client_id, room_id))
+        if (RedisHelper::getRoomByClientId(client_id, room_id))
         {
             ELOG_ERROR("Redis getRoomByClientId failed");
             return;
         }
 
         Publisher publisher;
-        if (redis_->getPublisher(room_id, stream_id, publisher))
+        if (RedisHelper::getPublisher(room_id, stream_id, publisher))
         {
             ELOG_ERROR("Redis getPublisher failed");
         }
 
         std::vector<Client> clients;
-        if (redis_->getAllClient(room_id, clients))
+        if (RedisHelper::getAllClient(room_id, clients))
         {
             ELOG_ERROR("Redis getAllClient failed");
             return;
@@ -423,7 +411,7 @@ int ErizoController::addPublisher(const std::string &erizo_id,
 int ErizoController::addVirtualPublisher(const BridgeStream &bridge_stream)
 {
     Stream stream;
-    if (redis_->getStream(bridge_stream.src_stream_id, stream))
+    if (RedisHelper::getStream(bridge_stream.src_stream_id, stream))
     {
         ELOG_ERROR("redis getStream failed");
         return 1;
@@ -498,14 +486,14 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     Client &client = hdl->getClient();
     std::vector<Subscriber> subscribers;
 
-    if (redis_->getAllSubscriber(client.room_id, subscribers))
+    if (RedisHelper::getAllSubscriber(client.room_id, subscribers))
     {
         ELOG_ERROR("Redis getAllSubscriber failed");
         return;
     }
 
     std::vector<Publisher> publishers;
-    if (redis_->getAllPublisher(client.room_id, publishers))
+    if (RedisHelper::getAllPublisher(client.room_id, publishers))
     {
         ELOG_ERROR("Redis getAllPublisher failed");
         return;
@@ -559,18 +547,18 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     }
 
     if (!subscribers_to_del.empty())
-        redis_->removeSubscribers(client.room_id, subscribers_to_del);
+        RedisHelper::removeSubscribers(client.room_id, subscribers_to_del);
 
     if (!publishers_to_del.empty())
-        redis_->removePublishers(client.room_id, publishers_to_del);
+        RedisHelper::removePublishers(client.room_id, publishers_to_del);
 
-    redis_->removeClientRoomMapping(client.id);
-    redis_->removeClient(client.room_id, client.id);
+    RedisHelper::removeClientRoomMapping(client.id);
+    RedisHelper::removeClient(client.room_id, client.id);
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
 {
-    ELOG_ERROR("%s",msg);
+    // ELOG_ERROR("%s", msg);
     Client &client = hdl->getClient();
     Json::Value root;
     Json::Reader reader;
@@ -625,20 +613,20 @@ Json::Value ErizoController::handleToken(Client &client, const Json::Value &root
     if (allocErizo(client))
         return Json::nullValue;
 
-    if (redis_->addClient(client.room_id, client))
+    if (RedisHelper::addClient(client.room_id, client))
     {
         ELOG_ERROR("addClient failed");
         return Json::nullValue;
     }
 
-    if (redis_->addClientRoomMapping(client.id, client.room_id))
+    if (RedisHelper::addClientRoomMapping(client.id, client.room_id))
     {
         ELOG_ERROR("addClientRoomMapping failed");
         return Json::nullValue;
     }
 
     std::vector<Publisher> publishers;
-    if (redis_->getAllPublisher(client.room_id, publishers))
+    if (RedisHelper::getAllPublisher(client.room_id, publishers))
     {
         ELOG_ERROR("getAllPublisher failed");
         return Json::nullValue;
@@ -691,7 +679,7 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     publisher.client_id = client.id;
     publisher.label = label;
 
-    if (redis_->addPublisher(client.room_id, publisher))
+    if (RedisHelper::addPublisher(client.room_id, publisher))
     {
         ELOG_ERROR("Add publisher to redis failed");
         return Json::nullValue;
@@ -720,7 +708,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
 
     std::string stream_id = root["streamId"].asString();
     Publisher publisher;
-    if (redis_->getPublisher(client.room_id, stream_id, publisher))
+    if (RedisHelper::getPublisher(client.room_id, stream_id, publisher))
     {
         ELOG_ERROR("Publisher not exist");
         return Json::nullValue;
@@ -736,7 +724,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     subscriber.subscribe_to = stream_id;
     subscriber.reply_to = amqp_signaling_->getReplyTo();
 
-    if (redis_->addSubscriber(client.room_id, subscriber))
+    if (RedisHelper::addSubscriber(client.room_id, subscriber))
     {
         ELOG_ERROR("Add Subscriber to redis failed");
         return Json::nullValue;
@@ -745,7 +733,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     if (subscriber.agent_id.compare(publisher.agent_id) != 0)
     {
         std::vector<BridgeStream> bridge_streams;
-        if (redis_->getAllBridgeStream(client.room_id, bridge_streams))
+        if (RedisHelper::getAllBridgeStream(client.room_id, bridge_streams))
         {
             ELOG_ERROR("get all bridge from redis stream failed");
             return Json::nullValue;
@@ -769,7 +757,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
             bridge_stream.src_stream_id = stream_id;
             bridge_stream.room_id = client.room_id;
 
-            if (redis_->addBridgeStream(client.room_id, bridge_stream))
+            if (RedisHelper::addBridgeStream(client.room_id, bridge_stream))
             {
                 ELOG_ERROR("add bridge stream to redis failed");
                 return Json::nullValue;

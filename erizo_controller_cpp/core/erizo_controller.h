@@ -83,7 +83,6 @@ private:
   void handleSignaling(Client &client, const Json::Value &root);
 
 private:
-  std::shared_ptr<RedisHelper> redis_;
   std::shared_ptr<SocketIOServer> socket_io_;
 
   std::shared_ptr<AMQPRPC> amqp_;

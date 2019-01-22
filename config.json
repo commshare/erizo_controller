@@ -18,7 +18,10 @@
         "password": "cathy978",
         "conn_timeout": 10,
         "rw_timeout": 10,
-        "max_conns": 100
+        "max_conns": 100,
+        "thread_num": 5,
+        "lock_timeout": 10000,
+        "lock_try_time": 100
     },
     "rabbitmq": {
         "host": "172.19.5.28",

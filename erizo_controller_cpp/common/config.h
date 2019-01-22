@@ -37,6 +37,8 @@ public:
   int redis_conn_timeout_;
   int redis_rw_timeout_;
   int redis_max_conns_;
+  int redis_lock_timeout_;
+  int redis_lock_try_time_;
 
   //Rabbitmq config;
   std::string rabbitmq_username_;
