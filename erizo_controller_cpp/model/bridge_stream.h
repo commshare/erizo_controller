@@ -9,11 +9,9 @@ struct BridgeStream
 {
     std::string id;
     std::string sender_erizo_id;
-    // std::string sender_agent_id;
     std::string sender_ip;
     uint16_t sender_port;
     std::string recver_erizo_id;
-    // std::string recver_agent_id;
     std::string recver_ip;
     uint16_t recver_port;
     std::string src_stream_id;
@@ -25,11 +23,9 @@ struct BridgeStream
         Json::Value root;
         root["id"] = id;
         root["sender_erizo_id"] = sender_erizo_id;
-        // root["sender_agent_id"] = sender_agent_id;
         root["sender_ip"] = sender_ip;
         root["sender_port"] = sender_port;
         root["recver_erizo_id"] = recver_erizo_id;
-        // root["recver_agent_id"] = recver_agent_id;
         root["recver_ip"] = recver_ip;
         root["recver_port"] = recver_port;
         root["src_stream_id"] = src_stream_id;
@@ -54,16 +50,12 @@ struct BridgeStream
             !root.isMember("sender_port") ||
             root["sender_port"].type() != Json::intValue ||
 
-            // !root.isMember("sender_agent_id") ||
-            // root["sender_agent_id"].type() != Json::stringValue ||
             !root.isMember("recver_erizo_id") ||
             root["recver_erizo_id"].type() != Json::stringValue ||
             !root.isMember("recver_ip") ||
             root["recver_ip"].type() != Json::stringValue ||
             !root.isMember("recver_port") ||
             root["recver_port"].type() != Json::intValue ||
-            // !root.isMember("recver_agent_id") ||
-            // root["recver_agent_id"].type() != Json::stringValue ||
             !root.isMember("src_stream_id") ||
             root["src_stream_id"].type() != Json::stringValue ||
             !root.isMember("label") ||
@@ -74,11 +66,9 @@ struct BridgeStream
 
         bridge_stream.id = root["id"].asString();
         bridge_stream.sender_erizo_id = root["sender_erizo_id"].asString();
-        // bridge_stream.sender_agent_id = root["sender_agent_id"].asString();
         bridge_stream.sender_ip = root["sender_ip"].asString();
         bridge_stream.sender_port = root["sender_port"].asInt();
         bridge_stream.recver_erizo_id = root["recver_erizo_id"].asString();
-        // bridge_stream.recver_agent_id = root["recver_agent_id"].asString();
         bridge_stream.recver_ip = root["recver_ip"].asString();
         bridge_stream.recver_port = root["recver_port"].asInt();
         bridge_stream.src_stream_id = root["src_stream_id"].asString();

@@ -48,39 +48,6 @@ int RedisHelper::getAllClient(const std::string &room_id, std::vector<Client> &c
     return 0;
 }
 
-int RedisHelper::addClientRoomMapping(const std::string &client_id, const std::string &room_id)
-{
-    RedisLocker locker;
-    if (!locker.lock(client_id))
-        return 1;
-    if (ACLRedis::getInstance()->hset("clients", client_id, room_id) == -1)
-        return 1;
-    locker.unlock();
-    return 0;
-}
-
-int RedisHelper::removeClientRoomMapping(const std::string &client_id)
-{
-    RedisLocker locker;
-    if (!locker.lock(client_id))
-        return 1;
-    if (ACLRedis::getInstance()->hdel("clients", client_id) == -1)
-        return 1;
-    locker.unlock();
-    return 0;
-}
-
-int RedisHelper::getRoomByClientId(const std::string &client_id, std::string &room_id)
-{
-    RedisLocker locker;
-    if (!locker.lock(client_id))
-        return 1;
-    if (ACLRedis::getInstance()->hget("clients", client_id, room_id) == -1)
-        return 1;
-    locker.unlock();
-    return 0;
-}
-
 int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubilsher)
 {
     RedisLocker locker;
@@ -88,10 +55,29 @@ int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubil
         return 1;
     std::string key = "publishers_" + room_id;
     if (ACLRedis::getInstance()->hset(key, pubilsher.id, pubilsher.toJSON()) == -1)
-    {
         return 1;
-    }
+    locker.unlock();
+    return 0;
+}
 
+int RedisHelper::setPublisherSSRC(const std::string &room_id, const std::string &publisher_id, uint32_t video_ssrc, uint32_t audio_ssrc)
+{
+    RedisLocker locker;
+    if (!locker.lock(room_id))
+        return 1;
+
+    std::string key = "publishers_" + room_id;
+    std::string buf;
+    if (ACLRedis::getInstance()->hget(key, publisher_id, buf) == -1)
+        return 1;
+    Publisher publisher;
+    if (Publisher::fromJSON(buf, publisher))
+        return 1;
+    publisher.video_ssrc = video_ssrc;
+    publisher.audio_ssrc = audio_ssrc;
+
+    if (ACLRedis::getInstance()->hset(key, publisher_id, publisher.toJSON()) == -1)
+        return 1;
     locker.unlock();
     return 0;
 }
@@ -252,22 +238,5 @@ int RedisHelper::getAllBridgeStream(const std::string &room_id, std::vector<Brid
         if (!BridgeStream::fromJSON(v, s))
             bridge_streams.push_back(s);
     }
-    return 0;
-}
-
-int RedisHelper::addStream(const std::string &client_id, const Stream &stream)
-{
-    if (ACLRedis::getInstance()->hset("stream", stream.id, stream.toJSON()) == -1)
-        return 1;
-    return 0;
-}
-
-int RedisHelper::getStream(const std::string &stream_id, Stream &stream)
-{
-    std::string buf;
-    if (ACLRedis::getInstance()->hget("stream", stream_id, buf) == -1)
-        return 1;
-    if (Stream::fromJSON(buf, stream))
-        return 1;
     return 0;
 }

@@ -15,6 +15,8 @@ struct Publisher
     uint16_t bridge_port;
     std::string agent_id;
     std::string label;
+    uint32_t video_ssrc;
+    uint32_t audio_ssrc;
 
     std::string toJSON() const
     {
@@ -26,6 +28,8 @@ struct Publisher
         root["agent_id"] = agent_id;
         root["client_id"] = client_id;
         root["label"] = label;
+        root["video_ssrc"] = video_ssrc;
+        root["audio_ssrc"] = audio_ssrc;
         Json::FastWriter writer;
         return writer.write(root);
     }
@@ -50,7 +54,9 @@ struct Publisher
             !root.isMember("client_id") ||
             root["client_id"].type() != Json::stringValue ||
             !root.isMember("label") ||
-            root["label"].type() != Json::stringValue)
+            root["label"].type() != Json::stringValue ||
+            !root.isMember("video_ssrc") ||
+            !root.isMember("audio_ssrc"))
             return 1;
 
         publisher.id = root["id"].asString();
@@ -60,6 +66,9 @@ struct Publisher
         publisher.agent_id = root["agent_id"].asString();
         publisher.client_id = root["client_id"].asString();
         publisher.label = root["label"].asString();
+        publisher.video_ssrc = root["video_ssrc"].asUInt();
+        publisher.audio_ssrc = root["audio_ssrc"].asUInt();
+
         return 0;
     }
 };

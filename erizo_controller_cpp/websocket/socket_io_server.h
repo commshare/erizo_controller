@@ -59,11 +59,10 @@ class SocketIOServer
     std::condition_variable send_cond_;
     std::queue<SIOData> send_queue_;
     std::mutex send_mux_;
-    
+
     std::unique_ptr<std::thread> send_thread_;
     std::atomic<bool> run_;
     bool init_;
-
 };
 
 #endif

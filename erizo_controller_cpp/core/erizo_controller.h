@@ -27,7 +27,9 @@ public:
   void close();
 
 private:
-  void notifyToSubscribe(const std::string &client_id, const std::string &stream_id);
+  void notifyToSubscribe(const std::string &room_id,
+                         const std::string &client_id,
+                         const std::string &stream_id);
 
   void asyncTask(const std::function<void()> &func);
 
@@ -35,7 +37,8 @@ private:
 
   int allocErizo(Client &client);
 
-  int addPublisher(const std::string &erizo_id,
+  int addPublisher(const std::string &room_id,
+                   const std::string &erizo_id,
                    const std::string &client_id,
                    const std::string &stream_id,
                    const std::string &label);
