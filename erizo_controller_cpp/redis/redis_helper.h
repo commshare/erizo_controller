@@ -9,7 +9,6 @@
 #include "model/bridge_stream.h"
 
 #include "acl_redis.h"
-#include "redis_locker.h"
 
 class RedisHelper
 {
@@ -19,7 +18,6 @@ public:
   static int getAllClient(const std::string &room_id, std::vector<Client> &clients);
 
   static int addPublisher(const std::string &room_id, const Publisher &publisher);
-  static int setPublisherSSRC(const std::string &room_id, const std::string &publisher_id, uint32_t video_ssrc, uint32_t audio_ssrc);
   static int getPublisher(const std::string &room_id, const std::string &publisher_id, Publisher &publisher);
   static int removePublishers(const std::string &room_id, const std::vector<std::string> &publisher_ids);
   static int getAllPublisher(const std::string &room_id, std::vector<Publisher> &publishers);
@@ -33,7 +31,6 @@ public:
   static int addBridgeStream(const std::string &room_id, const BridgeStream &bridge_stream);
   static int getBridgeStream(const std::string &room_id, const std::string &bridge_stream_id, BridgeStream &bridge_stream);
   static int getAllBridgeStream(const std::string &room_id, std::vector<BridgeStream> &bridge_streams);
-
 };
 
 #endif

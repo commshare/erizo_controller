@@ -28,19 +28,6 @@ int ErizoController::init()
     thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->worker_num_));
     thread_pool_->start();
 
-    socket_io_ = std::make_shared<SocketIOServer>();
-    if (socket_io_->init())
-    {
-        ELOG_ERROR("SocketIO server initialize failed");
-        return 1;
-    }
-    socket_io_->onMessage([this](SocketIOClientHandler *hdl, const std::string &msg) {
-        return onMessage(hdl, msg);
-    });
-    socket_io_->onClose([this](SocketIOClientHandler *hdl) {
-        onClose(hdl);
-    });
-
     amqp_ = std::make_shared<AMQPRPC>();
     if (amqp_->init())
     {
@@ -56,6 +43,19 @@ int ErizoController::init()
         ELOG_ERROR("AMQPRecv initialize failed");
         return 1;
     }
+
+    socket_io_ = std::make_shared<SocketIOServer>();
+    if (socket_io_->init())
+    {
+        ELOG_ERROR("SocketIO server initialize failed");
+        return 1;
+    }
+    socket_io_->onMessage([this](SocketIOClientHandler *hdl, const std::string &msg) {
+        return onMessage(hdl, msg);
+    });
+    socket_io_->onClose([this](SocketIOClientHandler *hdl) {
+        onClose(hdl);
+    });
 
     init_ = true;
     return 0;
@@ -255,7 +255,29 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             std::string room_id = data["roomId"].asString();
             uint32_t video_ssrc = data["video_ssrc"].asUInt();
             uint32_t audio_ssrc = data["audio_ssrc"].asUInt();
-            RedisHelper::setPublisherSSRC(room_id, stream_id, video_ssrc, audio_ssrc);
+
+            RedisLocker redis_locker;
+            if (!redis_locker.lock(room_id))
+            {
+                ELOG_ERROR("publisher_answer get redis locker failed");
+                return;
+            }
+
+            Publisher publisher;
+            if (RedisHelper::getPublisher(room_id, stream_id, publisher))
+            {
+                ELOG_ERROR("redis getPublisher failed");
+                return;
+            }
+            publisher.video_ssrc = video_ssrc;
+            publisher.audio_ssrc = audio_ssrc;
+            if (RedisHelper::addPublisher(room_id, publisher))
+            {
+                ELOG_ERROR("redis addPublisher failed");
+                return;
+            }
+
+            redis_locker.unlock();
 
             Json::Value event;
             event[0] = "signaling_message_erizo";
@@ -290,9 +312,17 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         {
             if (!data.isMember("roomId") ||
                 data["roomId"].type() != Json::stringValue)
-                return;  
+                return;
             std::string room_id = data["roomId"].asString();
+
+            RedisLocker redis_locker;
+            if (!redis_locker.lock(room_id))
+            {
+                ELOG_ERROR("notifyToSubscribe get redis locker failed");
+                return;
+            }
             notifyToSubscribe(room_id, client_id, stream_id);
+            redis_locker.unlock();
         }
         else if (!type.compare("new_publisher"))
         {
@@ -409,7 +439,7 @@ int ErizoController::addPublisher(const std::string &erizo_id,
 int ErizoController::addVirtualPublisher(const BridgeStream &bridge_stream)
 {
     Publisher publisher;
-    if (RedisHelper::getPublisher(bridge_stream.room_id,bridge_stream.src_stream_id, publisher))
+    if (RedisHelper::getPublisher(bridge_stream.room_id, bridge_stream.src_stream_id, publisher))
     {
         ELOG_ERROR("redis getPublisher failed");
         return 1;
@@ -484,6 +514,12 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     Client &client = hdl->getClient();
     std::vector<Subscriber> subscribers;
 
+    RedisLocker redis_locker;
+    if (!redis_locker.lock(client.room_id))
+    {
+        ELOG_ERROR("onClose get redis locker failed");
+        return;
+    }
     if (RedisHelper::getAllSubscriber(client.room_id, subscribers))
     {
         ELOG_ERROR("Redis getAllSubscriber failed");
@@ -551,11 +587,11 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         RedisHelper::removePublishers(client.room_id, publishers_to_del);
 
     RedisHelper::removeClient(client.room_id, client.id);
+    redis_locker.unlock();
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
 {
-    // ELOG_ERROR("%s", msg);
     Client &client = hdl->getClient();
     Json::Value root;
     Json::Reader reader;
@@ -670,6 +706,13 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     publisher.client_id = client.id;
     publisher.label = label;
 
+    RedisLocker redis_locker;
+    if (!redis_locker.lock(client.room_id))
+    {
+        ELOG_ERROR("handlePublish get redis locker failed");
+        return Json::nullValue;
+    }
+
     if (RedisHelper::addPublisher(client.room_id, publisher))
     {
         ELOG_ERROR("Add publisher to redis failed");
@@ -681,6 +724,8 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
         ELOG_ERROR("addPublisher failed,client %s,publisher %s", client.id, publisher.id);
         return Json::nullValue;
     }
+
+    redis_locker.unlock();
 
     Json::Value reply;
     reply[0] = publisher.id;
@@ -694,6 +739,13 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
         root["streamId"].type() != Json::stringValue)
     {
         ELOG_ERROR("Subscribe data format error");
+        return Json::nullValue;
+    }
+
+    RedisLocker redis_locker;
+    if (!redis_locker.lock(client.room_id))
+    {
+        ELOG_ERROR("handleSubscribe get redis locker failed");
         return Json::nullValue;
     }
 
@@ -773,6 +825,8 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
         ELOG_ERROR("addSubscriber failed");
         return Json::nullValue;
     }
+
+    redis_locker.unlock();
 
     Json::Value reply;
     reply[0] = true;

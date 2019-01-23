@@ -18,7 +18,7 @@ Config::Config()
     mysql_password_ = "cathy978";
 
     redis_ip_ = "127.0.0.1";
-    redis_port_ = 7002;
+    redis_port_ = 6379;
     redis_password_ = "cathy978";
     redis_conn_timeout_ = 10;
     redis_rw_timeout_ = 10;
@@ -28,7 +28,7 @@ Config::Config()
 
     rabbitmq_username_ = "linmin";
     rabbitmq_passwd_ = "linmin";
-    rabbitmq_hostname_ = "localhost";
+    rabbitmq_hostname_ = "127.0.0.1";
     rabbitmq_port_ = 5672;
     rabbitmq_timeout_ = 1000;
     uniquecast_exchange_ = "erizo_uniquecast_exchange";

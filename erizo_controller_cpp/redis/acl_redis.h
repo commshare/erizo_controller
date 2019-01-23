@@ -5,7 +5,7 @@
 #include <thread>
 #include <atomic>
 
-#include "acl_cpp/lib_acl.hpp"
+#include <acl_cpp/lib_acl.hpp>
 
 class ACLRedis
 {
@@ -15,7 +15,6 @@ public:
 
   int init();
   void close();
-  std::shared_ptr<acl::redis_client_cluster> getCluster();
 
   int setnx(const std::string &key, const std::string &value);
   int get(const std::string &key, std::string &value);

@@ -10,6 +10,7 @@
 
 #include "websocket/socket_io_server.h"
 #include "redis/redis_helper.h"
+#include "redis/redis_locker.h"
 #include "rabbitmq/amqp_rpc.h"
 #include "rabbitmq/amqp_recv.h"
 #include "model/client.h"
@@ -64,12 +65,6 @@ private:
                         const std::string &client_id,
                         const std::string &stream_id,
                         const Json::Value &msg);
-
-  // void createBridgeStream(const std::string &sender_erizo_id,
-  //                         const std::string &sender_agent_id,
-  //                         const std::string &recver_erizo_id,
-  //                         const std::string &recver_agent_id,
-  //                         const std::string &stream_id);
 
   void onSignalingMessage(const std::string &msg);
 
