@@ -20,7 +20,7 @@
         "rw_timeout": 10,
         "max_conns": 100,
         "lock_timeout": 10000,
-        "lock_try_time": 100
+        "lock_try_time": 1000
     },
     "rabbitmq": {
         "host": "172.19.5.28",

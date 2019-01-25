@@ -24,7 +24,7 @@ Config::Config()
     redis_rw_timeout_ = 10;
     redis_max_conns_ = 100;
     redis_lock_timeout_ = 2000; //ms
-    redis_lock_try_time_ = 100;
+    redis_lock_try_time_ = 1000;
 
     rabbitmq_username_ = "linmin";
     rabbitmq_passwd_ = "linmin";

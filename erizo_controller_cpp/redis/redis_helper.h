@@ -30,6 +30,7 @@ public:
 
   static int addBridgeStream(const std::string &room_id, const BridgeStream &bridge_stream);
   static int getBridgeStream(const std::string &room_id, const std::string &bridge_stream_id, BridgeStream &bridge_stream);
+  static int removeBridgeStream(const std::string &room_id, const std::string &bridge_stream_id);
   static int getAllBridgeStream(const std::string &room_id, std::vector<BridgeStream> &bridge_streams);
 };
 

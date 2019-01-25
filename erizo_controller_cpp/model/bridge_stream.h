@@ -17,6 +17,7 @@ struct BridgeStream
     std::string src_stream_id;
     std::string label;
     std::string room_id;
+    int subscribe_count;
 
     std::string toJSON() const
     {
@@ -31,6 +32,7 @@ struct BridgeStream
         root["src_stream_id"] = src_stream_id;
         root["label"] = label;
         root["room_id"] = room_id;
+        root["subscribe_count"] = subscribe_count;
         Json::FastWriter writer;
         return writer.write(root);
     }
@@ -49,7 +51,6 @@ struct BridgeStream
             root["sender_ip"].type() != Json::stringValue ||
             !root.isMember("sender_port") ||
             root["sender_port"].type() != Json::intValue ||
-
             !root.isMember("recver_erizo_id") ||
             root["recver_erizo_id"].type() != Json::stringValue ||
             !root.isMember("recver_ip") ||
@@ -61,7 +62,9 @@ struct BridgeStream
             !root.isMember("label") ||
             root["label"].type() != Json::stringValue ||
             !root.isMember("room_id") ||
-            root["room_id"].type() != Json::stringValue)
+            root["room_id"].type() != Json::stringValue ||
+            !root.isMember("subscribe_count") ||
+            root["subscribe_count"].type() != Json::intValue)
             return 1;
 
         bridge_stream.id = root["id"].asString();
@@ -74,6 +77,7 @@ struct BridgeStream
         bridge_stream.src_stream_id = root["src_stream_id"].asString();
         bridge_stream.label = root["label"].asString();
         bridge_stream.room_id = root["room_id"].asString();
+        bridge_stream.subscribe_count = root["subscribe_count"].asInt();
         return 0;
     };
 };

@@ -160,3 +160,11 @@ int RedisHelper::getAllBridgeStream(const std::string &room_id, std::vector<Brid
     }
     return 0;
 }
+
+int RedisHelper::removeBridgeStream(const std::string &room_id, const std::string &bridge_stream_id)
+{
+    std::string key = "bridge_stream_" + room_id;
+    if (ACLRedis::getInstance()->hdel(key, bridge_stream_id) == -1)
+        return 1;
+    return 0;
+}

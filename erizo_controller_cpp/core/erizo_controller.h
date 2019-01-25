@@ -38,8 +38,8 @@ private:
 
   int allocErizo(Client &client);
 
-  int addPublisher(const std::string &room_id,
-                   const std::string &erizo_id,
+  int addPublisher(const std::string &erizo_id,
+                   const std::string &room_id,
                    const std::string &client_id,
                    const std::string &stream_id,
                    const std::string &label);
@@ -50,6 +50,8 @@ private:
 
   int addVirtualPublisher(const BridgeStream &bridge_stream);
 
+  void removeVirtualPublisher(const BridgeStream &bridge_stream);
+
   int addSubscriber(const std::string &erizo_id,
                     const std::string &client_id,
                     const std::string &stream_id,
@@ -59,7 +61,13 @@ private:
                         const std::string &client_id,
                         const std::string &stream_id);
 
+  void notifyToRemoveSubscriber(const Subscriber &subscriber);
+
   int addVirtualSubscriber(const BridgeStream &bridge_stream);
+
+  void removeVirtualSubscriber(const BridgeStream &bridge_stream);
+
+  void removeBridgeStream();
 
   void processSignaling(const std::string &erizo_id,
                         const std::string &client_id,
@@ -79,6 +87,9 @@ private:
   Json::Value handleSubscribe(Client &client, const Json::Value &root);
 
   void handleSignaling(Client &client, const Json::Value &root);
+
+  int removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id);
+  int removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to);
 
 private:
   std::shared_ptr<SocketIOServer> socket_io_;

@@ -22,7 +22,8 @@ bool RedisLocker::try_lock(const std::string &key)
 
     key_ = key;
     std::ostringstream oss;
-    oss << Utils::getSystemMs();
+    uint64_t now = Utils::getSystemMs();
+    oss << now;
 
     if (!ACLRedis::getInstance()->setnx(key, oss.str()))
     {
@@ -42,12 +43,9 @@ bool RedisLocker::try_lock(const std::string &key)
         }
         else
         {
-            uint64_t now = Utils::getSystemMs();
             uint64_t t1 = std::stoll(value);
             if (now > t1 + Config::getInstance()->redis_lock_timeout_)
             {
-                oss.clear();
-                oss << now;
 
                 if (!ACLRedis::getInstance()->getset(key, oss.str(), value))
                     return 1;
@@ -84,7 +82,7 @@ bool RedisLocker::lock(const std::string &key)
     {
         ret = try_lock(key);
         if (!ret)
-            usleep(5000); // 5ms
+            usleep(10000); // 10ms
     } while (!ret && try_time--);
     return ret;
 }
