@@ -38,32 +38,20 @@ private:
 
   int allocErizo(Client &client);
 
-  int addPublisher(const std::string &erizo_id,
-                   const std::string &room_id,
-                   const std::string &client_id,
-                   const std::string &stream_id,
-                   const std::string &label);
+  int addPublisher(const Client &client, const Publisher &publisher);
+  void removePublisher(const Publisher &publisher);
 
-  void removePublisher(const std::string &erizo_id,
-                       const std::string &client_id,
-                       const std::string &stream_id);
-
-  int addVirtualPublisher(const BridgeStream &bridge_stream);
+  void addVirtualPublisher(const Publisher &publisher, const BridgeStream &bridge_stream);
 
   void removeVirtualPublisher(const BridgeStream &bridge_stream);
 
-  int addSubscriber(const std::string &erizo_id,
-                    const std::string &client_id,
-                    const std::string &stream_id,
-                    const std::string &label);
+  void addSubscriber(const Publisher &publisher, const Subscriber &subscriber);
 
-  void removeSubscriber(const std::string &erizo_id,
-                        const std::string &client_id,
-                        const std::string &stream_id);
+  void removeSubscriber(const Subscriber &subscriber);
 
   void notifyToRemoveSubscriber(const Subscriber &subscriber);
 
-  int addVirtualSubscriber(const BridgeStream &bridge_stream);
+  void addVirtualSubscriber(const BridgeStream &bridge_stream);
 
   void removeVirtualSubscriber(const BridgeStream &bridge_stream);
 
