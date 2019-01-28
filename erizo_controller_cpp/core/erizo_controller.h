@@ -38,24 +38,19 @@ private:
 
   int allocErizo(Client &client);
 
-  int addPublisher(const Client &client, const Publisher &publisher);
+  void addPublisher(const Client &client, const Publisher &publisher);
   void removePublisher(const Publisher &publisher);
 
   void addVirtualPublisher(const Publisher &publisher, const BridgeStream &bridge_stream);
-
   void removeVirtualPublisher(const BridgeStream &bridge_stream);
 
   void addSubscriber(const Publisher &publisher, const Subscriber &subscriber);
-
   void removeSubscriber(const Subscriber &subscriber);
 
   void notifyToRemoveSubscriber(const Subscriber &subscriber);
 
   void addVirtualSubscriber(const BridgeStream &bridge_stream);
-
   void removeVirtualSubscriber(const BridgeStream &bridge_stream);
-
-  void removeBridgeStream();
 
   void processSignaling(const std::string &erizo_id,
                         const std::string &client_id,

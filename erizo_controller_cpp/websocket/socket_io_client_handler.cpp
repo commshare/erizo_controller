@@ -17,7 +17,7 @@ SocketIOClientHandler::SocketIOClientHandler(uWS::WebSocket<uWS::SERVER> *ws,
     client_.port = addr.port;
     client_.family = addr.family;
 
-    if (!client_.family.compare("IPv4"))
+    if (client_.family == "IPv4")
     {
         client_.ip_info = Route::getInstance()->processIP(client_.ip);
     }
@@ -67,11 +67,11 @@ void SocketIOClientHandler::handleMessage(const std::string &msg)
 
     std::string event = msg.substr(pos);
     std::string res = on_message_hdl_(this, event);
-    if (!res.compare("disconnect"))
+    if (res == "disconnect")
     {
         sendMessage("41");
     }
-    else if (!res.compare("keep"))
+    else if (res == "keep")
     {
     }
     else
