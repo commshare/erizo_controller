@@ -139,7 +139,10 @@ void SocketIOServer::close()
     });
 
     for (auto it = clients_.begin(); it != clients_.end(); it++)
+    {
+        it->second->onClose();
         delete it->second;
+    }
     clients_.clear();
 
     init_ = false;

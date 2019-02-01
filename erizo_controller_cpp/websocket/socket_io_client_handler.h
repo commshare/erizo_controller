@@ -48,6 +48,7 @@ class SocketIOClientHandler
 
     void handleMessage(const std::string &msg);
     void sendEvent(const std::string &msg);
+    void sendMessage(const std::string &msg);
     Client &getClient()
     {
         return client_;
@@ -57,9 +58,6 @@ class SocketIOClientHandler
         std::unique_lock<std::mutex>(mux_);
         ws_ = ws;
     }
-
-  private:
-    void sendMessage(const std::string &msg);
 
   private:
     Client client_;
