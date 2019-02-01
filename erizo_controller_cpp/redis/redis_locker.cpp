@@ -2,6 +2,7 @@
 
 #include <sstream>
 
+#include "acl_redis.h"
 #include "common/utils.h"
 #include "common/config.h"
 
@@ -13,6 +14,7 @@ RedisLocker::RedisLocker() : key_(""),
 
 RedisLocker::~RedisLocker()
 {
+    unlock();
 }
 
 bool RedisLocker::try_lock(const std::string &key)
@@ -44,7 +46,7 @@ bool RedisLocker::try_lock(const std::string &key)
         else
         {
             uint64_t t1 = std::stoll(value);
-            if (now > t1 + Config::getInstance()->redis_lock_timeout_)
+            if (now > t1 + Config::getInstance()->redis_lock_timeout)
             {
 
                 if (!ACLRedis::getInstance()->getset(key, oss.str(), value))
@@ -77,7 +79,7 @@ void RedisLocker::unlock()
 bool RedisLocker::lock(const std::string &key)
 {
     bool ret;
-    int try_time = Config::getInstance()->redis_lock_try_time_;
+    int try_time = Config::getInstance()->redis_lock_try_time;
     do
     {
         ret = try_lock(key);

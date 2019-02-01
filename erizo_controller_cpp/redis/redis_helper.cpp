@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "acl_redis.h"
+
 int RedisHelper::addClient(const std::string &room_id, const Client &client)
 {
     std::string key = "clients_" + room_id;

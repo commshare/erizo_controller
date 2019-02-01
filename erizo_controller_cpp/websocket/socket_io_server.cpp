@@ -1,5 +1,8 @@
 #include "socket_io_server.h"
 
+#include <sstream>
+
+#include "socket_io_client_handler.h"
 #include "common/config.h"
 
 DEFINE_LOGGER(SocketIOServer, "SocketIOServer");
@@ -29,7 +32,7 @@ int SocketIOServer::init()
         return 0;
 
     run_ = true;
-    threads_.resize(Config::getInstance()->thread_num_);
+    threads_.resize(Config::getInstance()->socket_io_thread_num);
     std::transform(threads_.begin(), threads_.end(), threads_.begin(), [this](std::thread *t) {
         return new std::thread([this]() {
             //防止多线程创建hub出现段错误
@@ -72,27 +75,29 @@ int SocketIOServer::init()
                 delete hdl;
             });
 
-            if (Config::getInstance()->ssl_)
+            if (Config::getInstance()->ssl)
             {
-                uS::TLS::Context context = uS::TLS::createContext(Config::getInstance()->ssl_cert_,
-                                                                  Config::getInstance()->ssl_key_,
-                                                                  Config::getInstance()->ssl_passwd_);
-                if (!hub.listen(Config::getInstance()->ssl_port_, context, uS::ListenOptions::REUSE_PORT))
+                uS::TLS::Context context = uS::TLS::createContext(Config::getInstance()->ssl_cert,
+                                                                  Config::getInstance()->ssl_key,
+                                                                  Config::getInstance()->ssl_passwd);
+                if (!hub.listen(Config::getInstance()->ssl_port, context, uS::ListenOptions::REUSE_PORT))
                 {
-                    ELOG_ERROR("socket-io server(tls) listen to %d failed", Config::getInstance()->ssl_port_);
+                    ELOG_ERROR("socket-io server(tls) listen to %d failed", Config::getInstance()->ssl_port);
                     return;
                 }
             }
             else
             {
-                if (!hub.listen(Config::getInstance()->port_, nullptr, uS::ListenOptions::REUSE_PORT))
+                if (!hub.listen(Config::getInstance()->port, nullptr, uS::ListenOptions::REUSE_PORT))
                 {
-                    ELOG_ERROR("socket-io server listen to %d failed", Config::getInstance()->ssl_port_);
+                    ELOG_ERROR("socket-io server listen to %d failed", Config::getInstance()->ssl_port);
                     return;
                 }
             }
             while (run_)
-                hub.run();
+            {
+                hub.getLoop()->doEpoll(500); //500ms
+            }
         });
     });
 

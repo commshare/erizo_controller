@@ -8,8 +8,6 @@
 #include "model/erizo_agent.h"
 #include "model/bridge_stream.h"
 
-#include "acl_redis.h"
-
 class RedisHelper
 {
 public:

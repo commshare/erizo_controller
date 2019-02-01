@@ -3,6 +3,8 @@
 
 #include <sstream>
 
+#include <acl_cpp/lib_acl.hpp>
+
 ACLRedis::ACLRedis() : cluster_(nullptr),
                        init_(false)
 {
@@ -14,14 +16,14 @@ int ACLRedis::init()
         return 0;
     acl::acl_cpp_init();
     std::ostringstream oss;
-    oss << Config::getInstance()->redis_ip_ << ":" << Config::getInstance()->redis_port_;
+    oss << Config::getInstance()->redis_ip << ":" << Config::getInstance()->redis_port;
 
     cluster_ = std::make_shared<acl::redis_client_cluster>();
     cluster_->set(oss.str().c_str(),
-                  Config::getInstance()->redis_max_conns_,
-                  Config::getInstance()->redis_conn_timeout_,
-                  Config::getInstance()->redis_rw_timeout_);
-    cluster_->set_password("default", Config::getInstance()->redis_password_.c_str());
+                  Config::getInstance()->redis_max_conns,
+                  Config::getInstance()->redis_conn_timeout,
+                  Config::getInstance()->redis_rw_timeout);
+    cluster_->set_password("default", Config::getInstance()->redis_passwd.c_str());
     init_ = true;
     return 0;
 }
@@ -53,7 +55,7 @@ int ACLRedis::setnx(const std::string &key, const std::string &value)
         return false;
 
     acl::redis_string cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     int res = cmd.setnx(key.c_str(), value.c_str());
     cmd.clear();
     return res;
@@ -65,7 +67,7 @@ int ACLRedis::set(const std::string &key, const std::string &value)
         return false;
 
     acl::redis_string cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     int res = cmd.set(key.c_str(), value.c_str());
     cmd.clear();
     return res;
@@ -77,7 +79,7 @@ int ACLRedis::get(const std::string &key, std::string &value)
         return false;
 
     acl::redis_string cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     acl::string buf;
     int res = cmd.get(key.c_str(), buf);
     cmd.clear();
@@ -93,7 +95,7 @@ int ACLRedis::getset(const std::string &key, const std::string &value, std::stri
     if (!init_)
         return false;
     acl::redis_string cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     acl::string buf;
     int res = cmd.getset(key.c_str(), value.c_str(), buf);
     cmd.clear();
@@ -108,7 +110,7 @@ int ACLRedis::del(const std::string &key)
     if (!init_)
         return false;
     acl::redis cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     int res = cmd.del_one(key.c_str());
     cmd.clear();
     return res;
@@ -119,7 +121,7 @@ int ACLRedis::hset(const std::string &key, const std::string &field, const std::
     if (!init_)
         return false;
     acl::redis_hash cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     int res = cmd.hset(key.c_str(), field.c_str(), value.c_str());
     cmd.clear();
     return res;
@@ -130,7 +132,7 @@ int ACLRedis::hget(const std::string &key, const std::string &field, std::string
     if (!init_)
         return false;
     acl::redis_hash cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     acl::string buf;
     int res = cmd.hget(key.c_str(), field.c_str(), buf);
     cmd.clear();
@@ -145,7 +147,7 @@ int ACLRedis::hdel(const std::string &key, const std::string &field)
     if (!init_)
         return false;
     acl::redis_hash cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     int res = cmd.hdel(key.c_str(), field.c_str());
     cmd.clear();
     return res;
@@ -156,7 +158,7 @@ int ACLRedis::hdel(const std::string &key, const std::vector<std::string> &field
     if (!init_)
         return false;
     acl::redis_hash cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     std::vector<acl::string> acl_fields;
     for (const std::string &s : fields)
         acl_fields.push_back(s.c_str());
@@ -170,7 +172,7 @@ int ACLRedis::hvals(const std::string &key, std::vector<std::string> &fields, st
     if (!init_)
         return false;
     acl::redis_hash cmd;
-    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns_);
+    cmd.set_cluster(cluster_.get(), Config::getInstance()->redis_max_conns);
     std::map<acl::string, acl::string> buf;
     int res = cmd.hgetall(key.c_str(), buf);
     cmd.clear();

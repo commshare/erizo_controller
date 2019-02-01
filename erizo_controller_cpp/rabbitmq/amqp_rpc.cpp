@@ -7,13 +7,14 @@ constexpr int kQueueSize = 256;
 
 DEFINE_LOGGER(AMQPRPC, "AMQPRPC");
 
-AMQPRPC::AMQPRPC() : init_(false),
-                     run_(false),
+AMQPRPC::AMQPRPC() : reply_to_(""),
+                     index_(0),
                      conn_(nullptr),
                      recv_thread_(nullptr),
                      send_thread_(nullptr),
-                     reply_to_(""),
-                     index_(0) {}
+                     check_thread_(nullptr),
+                     run_(false),
+                     init_(false) {}
 
 AMQPRPC::~AMQPRPC()
 {
@@ -29,22 +30,22 @@ int AMQPRPC::init()
     amqp_socket_t *socket = amqp_tcp_socket_new(conn_);
     if (!socket)
     {
-        ELOG_ERROR("Creating TCP socket failed");
+        ELOG_ERROR("create tcp socket failed");
         return 1;
     }
 
-    if (amqp_socket_open(socket, Config::getInstance()->rabbitmq_hostname_.c_str(), Config::getInstance()->rabbitmq_port_) != AMQP_STATUS_OK)
+    if (amqp_socket_open(socket, Config::getInstance()->rabbitmq_hostname.c_str(), Config::getInstance()->rabbitmq_port) != AMQP_STATUS_OK)
     {
-        ELOG_ERROR("Opening TCP socket failed");
+        ELOG_ERROR("open tcp socket failed");
         return 1;
     }
 
     res = amqp_login(conn_, "/", 0, 131072, 0,
-                     AMQP_SASL_METHOD_PLAIN, Config::getInstance()->rabbitmq_username_.c_str(),
-                     Config::getInstance()->rabbitmq_passwd_.c_str());
+                     AMQP_SASL_METHOD_PLAIN, Config::getInstance()->rabbitmq_username.c_str(),
+                     Config::getInstance()->rabbitmq_passwd.c_str());
     if (checkError(res))
     {
-        ELOG_ERROR("Logging in failed");
+        ELOG_ERROR("login failed");
         return 1;
     }
 
@@ -52,17 +53,17 @@ int AMQPRPC::init()
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Opening channel failed");
+        ELOG_ERROR("open channel failed");
         return 1;
     }
 
-    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
+    amqp_exchange_declare(conn_, 1, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange.c_str()),
                           amqp_cstring_bytes("direct"), 0, 1, 0, 0,
                           amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Declaring uniquecast exchange failed");
+        ELOG_ERROR("declare uniquecast exchange failed");
         return 1;
     }
 
@@ -71,24 +72,24 @@ int AMQPRPC::init()
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Declaring queue failed");
+        ELOG_ERROR("declare queue failed");
         return 1;
     }
 
     amqp_bytes_t queuename = amqp_bytes_malloc_dup(r->queue);
     if (queuename.bytes == NULL)
     {
-        ELOG_ERROR("Out of memory while copying queue name");
+        ELOG_ERROR("out of memory while copying queue name");
         return 1;
     }
 
     reply_to_ = stringifyBytes(queuename);
-    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
+    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange.c_str()),
                     queuename, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Binding queue failed");
+        ELOG_ERROR("bind queue failed");
         return 1;
     }
 
@@ -97,12 +98,9 @@ int AMQPRPC::init()
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Consuming failed");
+        ELOG_ERROR("consume failed");
         return 1;
     }
-
-    thread_pool_ = std::make_shared<erizo::ThreadPool>(Config::getInstance()->worker_num_);
-    thread_pool_->start();
 
     cb_queue_.resize(kQueueSize);
 
@@ -123,7 +121,6 @@ int AMQPRPC::init()
             {
                 if (res.reply_type == AMQP_RESPONSE_LIBRARY_EXCEPTION && res.library_error == AMQP_STATUS_TIMEOUT)
                     continue;
-                ELOG_DEBUG("Amqp consumer thread quit...");
                 return;
             }
 
@@ -156,11 +153,11 @@ int AMQPRPC::init()
                 std::unique_lock<std::mutex>(cb.mux);
                 if (cb.ts > 0)
                 {
-                    if (now - cb.ts > (uint64_t)Config::getInstance()->rabbitmq_timeout_)
+                    if (now - cb.ts > (uint64_t)Config::getInstance()->rabbitmq_timeout)
                     {
                         cb.func(Json::nullValue);
                         cb.ts = 0;
-                        ELOG_WARN("RPC timeout,dump:%s", cb.dump.c_str());
+                        ELOG_WARN("rpc timeout,dump %s", cb.dump.c_str());
                     }
                 }
             }
@@ -169,7 +166,6 @@ int AMQPRPC::init()
     }));
 
     init_ = true;
-
     return 0;
 }
 
@@ -179,7 +175,6 @@ void AMQPRPC::close()
         return;
 
     run_ = false;
-
     check_thread_->join();
     check_thread_.reset();
     check_thread_ = nullptr;
@@ -193,25 +188,16 @@ void AMQPRPC::close()
     send_thread_.reset();
     send_thread_ = nullptr;
 
-    thread_pool_->close();
-    thread_pool_.reset();
-    thread_pool_ = nullptr;
-
     amqp_channel_close(conn_, 1, AMQP_REPLY_SUCCESS);
     amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
     amqp_destroy_connection(conn_);
+    conn_ = nullptr;
 
-    amqp_channel_close(conn_, 1, AMQP_REPLY_SUCCESS);
-    amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
-    amqp_destroy_connection(conn_);
-
+    cb_queue_.clear();
     while (!send_queue_.empty())
         send_queue_.pop();
 
-    cb_queue_.clear();
-
     init_ = false;
-    conn_ = nullptr;
 }
 
 void AMQPRPC::handleCallback(const std::string &msg)
@@ -225,13 +211,18 @@ void AMQPRPC::handleCallback(const std::string &msg)
         root["corrID"].type() != Json::intValue ||
         !root.isMember("data") ||
         root["data"].type() != Json::objectValue)
+    {
+        ELOG_ERROR("json parse [corrID/data] failed,dump %s", msg);
         return;
-
+    }
     int corrid = root["corrID"].asInt();
     Json::Value data = root["data"];
 
     if (corrid < 0 || corrid > kQueueSize)
+    {
+        ELOG_ERROR("rpc callback corrid error");
         return;
+    }
 
     AMQPCallback &cb = cb_queue_[corrid];
     std::unique_lock<std::mutex>(cb.mux);
@@ -239,6 +230,10 @@ void AMQPRPC::handleCallback(const std::string &msg)
     {
         cb.func(data);
         cb.ts = 0;
+    }
+    else
+    {
+        ELOG_ERROR("rpc callback not exist");
     }
 }
 
@@ -255,16 +250,13 @@ void AMQPRPC::rpc(const std::string &exchange,
         std::unique_lock<std::mutex> lock(cb.mux);
         if (cb.ts == 0)
         {
-            //******************DEBUG*****************
-            Json::FastWriter writer;
-            std::string msg = writer.write(data);
-            cb.dump = msg;
-            //******************DEBUG*****************
+            cb.dump = Utils::dumpJson(data);
             cb.ts = Utils::getCurrentMs();
             cb.func = func;
         }
         else
         {
+            ELOG_ERROR("rpc callback queue fill");
             func(Json::nullValue);
         }
     }
@@ -290,7 +282,7 @@ int AMQPRPC::rpc(const std::string &queuename, const Json::Value &data)
     {
         try_time--;
         callback_done = false;
-        rpc(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &ret, &callback_done](const Json::Value &root) {
+        rpc(Config::getInstance()->uniquecast_exchange, queuename, queuename, data, [this, &ret, &callback_done](const Json::Value &root) {
             if (root.type() == Json::nullValue)
             {
                 ret = 1;
@@ -316,31 +308,12 @@ int AMQPRPC::rpc(const std::string &queuename, const Json::Value &data)
 void AMQPRPC::rpcNotReply(const std::string &queuename, const Json::Value &data)
 {
     Json::Value root;
-    root["corrID"] = -1;
-    root["replyTo"] = Json::stringValue;
     root["data"] = data;
     Json::FastWriter writer;
     std::string msg = writer.write(root);
 
     std::unique_lock<std::mutex> lock(send_queue_mux_);
-    send_queue_.push({Config::getInstance()->uniquecast_exchange_, queuename, queuename, msg});
-    send_cond_.notify_one();
-}
-
-void AMQPRPC::sendMessage(const std::string &exchange,
-                          const std::string &queuename,
-                          const std::string &binding_key,
-                          const Json::Value &data)
-{
-    Json::Value root;
-    root["data"] = data;
-    root["corrID"] = Json::intValue;
-    root["replyTo"] = Json::stringValue;
-    Json::FastWriter writer;
-    std::string msg = writer.write(root);
-
-    std::unique_lock<std::mutex> lock(send_queue_mux_);
-    send_queue_.push({exchange, queuename, binding_key, msg});
+    send_queue_.push({Config::getInstance()->uniquecast_exchange, queuename, queuename, msg});
     send_cond_.notify_one();
 }
 
@@ -374,7 +347,7 @@ int AMQPRPC::checkError(amqp_rpc_reply_t x)
         return 0;
 
     case AMQP_RESPONSE_NONE:
-        ELOG_ERROR("missing RPC reply type!");
+        ELOG_ERROR("missing rpc reply type!");
         break;
 
     case AMQP_RESPONSE_LIBRARY_EXCEPTION:
@@ -421,7 +394,7 @@ int AMQPRPC::send(const std::string &exchange, const std::string &queuename, con
     props.reply_to = amqp_bytes_malloc_dup(amqp_cstring_bytes(queuename.c_str()));
     if (props.reply_to.bytes == NULL)
     {
-        ELOG_ERROR("Out of memory while copying queue name");
+        ELOG_ERROR("out of memory while copying queue name");
         return 1;
     }
 

@@ -2,7 +2,6 @@
 #define SOCKET_IO_SERVER_H
 
 #include <string>
-#include <sstream>
 #include <functional>
 #include <thread>
 #include <atomic>
@@ -15,11 +14,8 @@
 #include <uWS/uWS.h>
 
 #include "common/logger.h"
-#include "socket_io_client_handler.h"
 
-class ClientHdl
-{
-};
+class SocketIOClientHandler;
 
 class SocketIOServer
 {

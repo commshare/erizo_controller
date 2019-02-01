@@ -23,9 +23,9 @@ int SQLHelper::init()
     try
     {
         sql::Driver *driver = get_driver_instance();
-        conn_ = driver->connect(Config::getInstance()->mysql_url_,
-                                Config::getInstance()->mysql_username_,
-                                Config::getInstance()->mysql_password_);
+        conn_ = driver->connect(Config::getInstance()->mysql_url,
+                                Config::getInstance()->mysql_username,
+                                Config::getInstance()->mysql_passwd);
         conn_->setSchema("licode");
         return 0;
     }

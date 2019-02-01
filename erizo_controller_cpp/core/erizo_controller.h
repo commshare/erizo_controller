@@ -8,26 +8,35 @@
 
 #include <json/json.h>
 
-#include "websocket/socket_io_server.h"
-#include "redis/redis_helper.h"
-#include "redis/redis_locker.h"
-#include "rabbitmq/amqp_rpc.h"
-#include "rabbitmq/amqp_recv.h"
+#include "thread/thread_pool.h"
+#include "common/logger.h"
 #include "model/client.h"
-#include "common/config.h"
+#include "model/bridge_stream.h"
+
+class AMQPRPC;
+class AMQPRecv;
+class SocketIOServer;
+class SocketIOClientHandler;
+
+namespace erizo
+{
+class ThreadPool;
+}
 
 class ErizoController
 {
   DECLARE_LOGGER();
 
 public:
-  ErizoController();
   ~ErizoController();
+  static ErizoController *getInstance();
 
   int init();
   void close();
 
 private:
+  ErizoController();
+
   void notifyToSubscribe(const std::string &room_id,
                          const std::string &client_id,
                          const std::string &stream_id);
@@ -76,11 +85,12 @@ private:
 
 private:
   std::shared_ptr<SocketIOServer> socket_io_;
-
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;
   std::unique_ptr<erizo::ThreadPool> thread_pool_;
   bool init_;
+
+  static ErizoController *instance_;
 };
 
 #endif

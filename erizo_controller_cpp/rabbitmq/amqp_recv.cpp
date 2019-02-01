@@ -7,15 +7,15 @@
 DEFINE_LOGGER(AMQPRecv, "AMQPRecv");
 static Config *config = Config::getInstance();
 
-AMQPRecv::AMQPRecv() : init_(false),
-                                       run_(false),
-                                       conn_(nullptr),
-                                       recv_thread_(nullptr)
+AMQPRecv::AMQPRecv() : reply_to_(""),
+                       conn_(nullptr),
+                       recv_thread_(nullptr),
+                       run_(false),
+                       init_(false)
 {
 }
 
 AMQPRecv::~AMQPRecv() {}
-
 
 int AMQPRecv::checkError(amqp_rpc_reply_t x)
 {
@@ -25,7 +25,7 @@ int AMQPRecv::checkError(amqp_rpc_reply_t x)
         return 0;
 
     case AMQP_RESPONSE_NONE:
-        ELOG_ERROR("missing RPC reply type!");
+        ELOG_ERROR("missing rpc reply type!");
         break;
 
     case AMQP_RESPONSE_LIBRARY_EXCEPTION:
@@ -65,32 +65,29 @@ int AMQPRecv::checkError(amqp_rpc_reply_t x)
 int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
 {
     if (init_)
-    {
-        ELOG_WARN("AMQPHepler duplicate initialize,just return!!!");
         return 0;
-    }
 
     amqp_rpc_reply_t res;
     conn_ = amqp_new_connection();
     amqp_socket_t *socket = amqp_tcp_socket_new(conn_);
     if (!socket)
     {
-        ELOG_ERROR("Creating TCP socket failed");
+        ELOG_ERROR("create tcp socket failed");
         return 1;
     }
 
-    if (amqp_socket_open(socket, config->rabbitmq_hostname_.c_str(), config->rabbitmq_port_) != AMQP_STATUS_OK)
+    if (amqp_socket_open(socket, config->rabbitmq_hostname.c_str(), config->rabbitmq_port) != AMQP_STATUS_OK)
     {
-        ELOG_ERROR("Opening TCP socket failed");
+        ELOG_ERROR("open tcp socket failed");
         return 1;
     }
 
     res = amqp_login(conn_, "/", 0, 131072, 0,
-                     AMQP_SASL_METHOD_PLAIN, config->rabbitmq_username_.c_str(),
-                     config->rabbitmq_passwd_.c_str());
+                     AMQP_SASL_METHOD_PLAIN, config->rabbitmq_username.c_str(),
+                     config->rabbitmq_passwd.c_str());
     if (checkError(res))
     {
-        ELOG_ERROR("Logging in failed");
+        ELOG_ERROR("login failed");
         return 1;
     }
 
@@ -98,7 +95,7 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Opening channel failed");
+        ELOG_ERROR("open channel failed");
         return 1;
     }
 
@@ -107,24 +104,24 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Declaring queue failed");
+        ELOG_ERROR("declare queue failed");
         return 1;
     }
 
     amqp_bytes_t queuename = amqp_bytes_malloc_dup(r->queue);
     if (queuename.bytes == NULL)
     {
-        ELOG_ERROR("Out of memory while copying queue name");
+        ELOG_ERROR("out of memory while copying queue name");
         return 1;
     }
 
     reply_to_ = stringifyBytes(queuename);
-    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange_.c_str()),
+    amqp_queue_bind(conn_, 1, queuename, amqp_cstring_bytes(Config::getInstance()->uniquecast_exchange.c_str()),
                     queuename, amqp_empty_table);
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Binding queue failed");
+        ELOG_ERROR("bind queue failed");
         return 1;
     }
 
@@ -133,7 +130,7 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
     res = amqp_get_rpc_reply(conn_);
     if (checkError(res))
     {
-        ELOG_ERROR("Consuming failed");
+        ELOG_ERROR("consume failed");
         return 1;
     }
 
@@ -154,7 +151,6 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
             {
                 if (res.reply_type == AMQP_RESPONSE_LIBRARY_EXCEPTION && res.library_error == AMQP_STATUS_TIMEOUT)
                     continue;
-                ELOG_DEBUG("Amqp consumer thread quit...");
                 return;
             }
 
@@ -172,22 +168,19 @@ int AMQPRecv::init(const std::function<void(const std::string &msg)> &func)
 void AMQPRecv::close()
 {
     if (!init_)
-    {
-        ELOG_WARN("AMQPRecv didn't initialize,can't close!!!");
         return;
-    }
 
     run_ = false;
     recv_thread_->join();
+    recv_thread_.reset();
+    recv_thread_ = nullptr;
 
     amqp_channel_close(conn_, 1, AMQP_REPLY_SUCCESS);
     amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
     amqp_destroy_connection(conn_);
+    conn_ = nullptr;
 
     init_ = false;
-    conn_ = nullptr;
-    recv_thread_.reset();
-    recv_thread_ = nullptr;
 }
 
 std::string AMQPRecv::stringifyBytes(amqp_bytes_t bytes)

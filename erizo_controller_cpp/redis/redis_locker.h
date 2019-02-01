@@ -3,8 +3,6 @@
 
 #include <string>
 
-#include "acl_redis.h"
-
 class RedisLocker
 {
 public:

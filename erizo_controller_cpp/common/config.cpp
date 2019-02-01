@@ -8,36 +8,35 @@ Config *Config::instance_ = nullptr;
 
 Config::Config()
 {
-    port_ = 8080;
-    ssl_key_ = "cert/key.pem";
-    ssl_cert_ = "cert/cert.pem";
-    ssl_port_ = 443;
+    port = 8080;
+    ssl_key = "cert/key.pem";
+    ssl_cert = "cert/cert.pem";
+    ssl_port = 443;
 
-    mysql_url_ = "tcp://119.28.70.47:3306";
-    mysql_username_ = "root";
-    mysql_password_ = "cathy978";
+    mysql_url = "tcp://119.28.70.47:3306";
+    mysql_username = "root";
+    mysql_passwd = "cathy978";
 
-    redis_ip_ = "127.0.0.1";
-    redis_port_ = 6379;
-    redis_password_ = "cathy978";
-    redis_conn_timeout_ = 10;
-    redis_rw_timeout_ = 10;
-    redis_max_conns_ = 100;
-    redis_lock_timeout_ = 2000; //ms
-    redis_lock_try_time_ = 1000;
+    redis_ip = "127.0.0.1";
+    redis_port = 6379;
+    redis_passwd = "cathy978";
+    redis_conn_timeout = 10;
+    redis_rw_timeout = 10;
+    redis_max_conns = 100;
+    redis_lock_timeout = 2000; //ms
+    redis_lock_try_time = 1000;
 
-    rabbitmq_username_ = "linmin";
-    rabbitmq_passwd_ = "linmin";
-    rabbitmq_hostname_ = "127.0.0.1";
-    rabbitmq_port_ = 5672;
-    rabbitmq_timeout_ = 1000;
-    uniquecast_exchange_ = "erizo_uniquecast_exchange";
-    boardcast_exchange_ = "erizo_boardcast_exchange";
+    rabbitmq_username = "linmin";
+    rabbitmq_passwd = "linmin";
+    rabbitmq_hostname = "127.0.0.1";
+    rabbitmq_port = 5672;
+    rabbitmq_timeout = 1000;
+    uniquecast_exchange = "erizo_uniquecast_exchange";
+    boardcast_exchange = "erizo_boardcast_exchange";
 
-    worker_num_ = 5;
-    thread_num_ = 20;
-    default_area_ = "default_area";
-    erizo_agent_timeout_ = 10000;
+    erizo_controller_worker_num = 5;
+    socket_io_thread_num = 20;
+    erizo_agent_timeout = 10000;
 }
 
 Config *Config::getInstance()
@@ -49,11 +48,6 @@ Config *Config::getInstance()
 
 Config::~Config()
 {
-    if (instance_ != nullptr)
-    {
-        delete instance_;
-        instance_ = nullptr;
-    }
 }
 
 int Config::init(const std::string &config_file)
@@ -61,7 +55,7 @@ int Config::init(const std::string &config_file)
     std::ifstream ifs(config_file, std::ios::binary);
     if (!ifs.is_open())
     {
-        ELOG_ERROR("Open %s failed", config_file);
+        ELOG_ERROR("open %s failed", config_file);
         return 1;
     }
 
@@ -69,7 +63,7 @@ int Config::init(const std::string &config_file)
     Json::Value root;
     if (!reader.parse(ifs, root))
     {
-        ELOG_ERROR("Parse %s failed", config_file);
+        ELOG_ERROR("parse %s failed", config_file);
         return 1;
     }
 
@@ -89,7 +83,7 @@ int Config::init(const std::string &config_file)
         !websocket.isMember("ssl_port") ||
         websocket["ssl_port"].type() != Json::intValue)
     {
-        ELOG_ERROR("Websocket config check error");
+        ELOG_ERROR("websocket config check error");
         return 1;
     }
 
@@ -103,7 +97,7 @@ int Config::init(const std::string &config_file)
         !mysql.isMember("password") ||
         mysql["password"].type() != Json::stringValue)
     {
-        ELOG_ERROR("Mysql config check error");
+        ELOG_ERROR("mysql config check error");
         return 1;
     }
 
@@ -127,7 +121,7 @@ int Config::init(const std::string &config_file)
         !redis.isMember("lock_try_time") ||
         redis["lock_try_time"].type() != Json::intValue)
     {
-        ELOG_ERROR("Redis config check error");
+        ELOG_ERROR("redis config check error");
         return 1;
     }
 
@@ -149,58 +143,73 @@ int Config::init(const std::string &config_file)
         !rabbitmq.isMember("uniquecast_exchange") ||
         rabbitmq["uniquecast_exchange"].type() != Json::stringValue)
     {
-        ELOG_ERROR("Rabbitmq config check error");
+        ELOG_ERROR("rabbitmq config check error");
         return 1;
     }
 
     Json::Value other = root["other"];
     if (!root.isMember("other") ||
         other.type() != Json::objectValue ||
-        !other.isMember("worker_num") ||
-        other["worker_num"].type() != Json::intValue ||
-        !other.isMember("thread_num") ||
-        other["thread_num"].type() != Json::intValue ||
-        !other.isMember("default_area") ||
-        other["default_area"].type() != Json::stringValue ||
+        !other.isMember("erizo_controller_worker_num") ||
+        other["erizo_controller_worker_num"].type() != Json::intValue ||
+        !other.isMember("socket_io_thread_num") ||
+        other["socket_io_thread_num"].type() != Json::intValue ||
+        !other.isMember("server") ||
+        other["server"].type() != Json::arrayValue ||
         !other.isMember("erizo_agent_timeout") ||
         other["erizo_agent_timeout"].type() != Json::intValue)
     {
-        ELOG_ERROR("Other config check error");
+        ELOG_ERROR("other config check error");
         return 1;
     }
 
-    port_ = websocket["port"].asInt();
-    ssl_ = websocket["ssl"].asBool();
-    ssl_key_ = websocket["ssl_key"].asString();
-    ssl_cert_ = websocket["ssl_cert"].asString();
-    ssl_passwd_ = websocket["ssl_passwd"].asString();
-    ssl_port_ = websocket["ssl_port"].asInt();
+    port = websocket["port"].asInt();
+    ssl = websocket["ssl"].asBool();
+    ssl_key = websocket["ssl_key"].asString();
+    ssl_cert = websocket["ssl_cert"].asString();
+    ssl_passwd = websocket["ssl_passwd"].asString();
+    ssl_port = websocket["ssl_port"].asInt();
 
-    mysql_url_ = mysql["url"].asString();
-    mysql_username_ = mysql["username"].asString();
-    mysql_password_ = mysql["password"].asString();
+    mysql_url = mysql["url"].asString();
+    mysql_username = mysql["username"].asString();
+    mysql_passwd = mysql["password"].asString();
 
-    redis_ip_ = redis["ip"].asString();
-    redis_port_ = redis["port"].asInt();
-    redis_password_ = redis["password"].asString();
-    redis_conn_timeout_ = redis["conn_timeout"].asInt();
-    redis_rw_timeout_ = redis["rw_timeout"].asInt();
-    redis_max_conns_ = redis["max_conns"].asInt();
-    redis_lock_timeout_ = redis["lock_timeout"].asInt();
-    redis_lock_try_time_ = redis["lock_try_time"].asInt();
+    redis_ip = redis["ip"].asString();
+    redis_port = redis["port"].asInt();
+    redis_passwd = redis["password"].asString();
+    redis_conn_timeout = redis["conn_timeout"].asInt();
+    redis_rw_timeout = redis["rw_timeout"].asInt();
+    redis_max_conns = redis["max_conns"].asInt();
+    redis_lock_timeout = redis["lock_timeout"].asInt();
+    redis_lock_try_time = redis["lock_try_time"].asInt();
 
-    rabbitmq_hostname_ = rabbitmq["host"].asString();
-    rabbitmq_port_ = rabbitmq["port"].asInt();
-    rabbitmq_username_ = rabbitmq["username"].asString();
-    rabbitmq_passwd_ = rabbitmq["password"].asString();
-    rabbitmq_timeout_ = rabbitmq["timeout"].asInt();
-    uniquecast_exchange_ = rabbitmq["uniquecast_exchange"].asString();
-    boardcast_exchange_ = rabbitmq["boardcast_exchange"].asString();
+    rabbitmq_hostname = rabbitmq["host"].asString();
+    rabbitmq_port = rabbitmq["port"].asInt();
+    rabbitmq_username = rabbitmq["username"].asString();
+    rabbitmq_passwd = rabbitmq["password"].asString();
+    rabbitmq_timeout = rabbitmq["timeout"].asInt();
+    uniquecast_exchange = rabbitmq["uniquecast_exchange"].asString();
+    boardcast_exchange = rabbitmq["boardcast_exchange"].asString();
 
-    worker_num_ = other["worker_num"].asInt();
-    thread_num_ = other["thread_num"].asInt();
-    default_area_ = other["default_area"].asString();
-    erizo_agent_timeout_ = other["erizo_agent_timeout"].asInt();
+    erizo_controller_worker_num = other["erizo_controller_worker_num"].asInt();
+    socket_io_thread_num = other["socket_io_thread_num"].asInt();
+    erizo_agent_timeout = other["erizo_agent_timeout"].asInt();
+
+
+    Json::Value server_items = other["server"];
+    for (size_t i = 0; i < server_items.size(); i++)
+    {
+        if (server_items[(int)i].type() != Json::objectValue)
+            continue;
+ 
+        Json::Value item = server_items[(int)i];
+        if (!item.isMember("id") || item["id"].type() != Json::intValue ||
+            !item.isMember("name") || item["name"].type() != Json::stringValue)
+            continue;
+        int id = item["id"].asInt();
+        std::string name = item["name"].asString();
+        server_mapping[id] = name;
+    }
 
     return 0;
 }

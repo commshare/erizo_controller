@@ -32,9 +32,14 @@
         "boardcast_exchange": "erizo_boardcast_exchange"
     },
     "other": {
-        "thread_num": 10,
-        "worker_num": 10,
-        "default_area": "default_area",
+        "socket_io_thread_num": 10,
+        "erizo_controller_worker_num": 10,
+        "server": [
+            {
+                "id": 0,
+                "name": "default_area"
+            }
+        ],
         "erizo_agent_timeout": 10000
     }
 }

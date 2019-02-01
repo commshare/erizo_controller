@@ -3,14 +3,12 @@
 
 #include <string>
 #include <functional>
-#include <thread>
 #include <mutex>
 
 #include <uWS/uWS.h>
 #include <json/json.h>
 
 #include "model/client.h"
-#include "common/utils.h"
 #include "common/logger.h"
 
 class SocketIOClientHandler

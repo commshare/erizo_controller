@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include <string>
+#include <map>
 
 #include <json/json.h>
 
@@ -17,42 +18,38 @@ public:
   int init(const std::string &config_file);
 
 public:
-  // Websocket config
-  unsigned short port_;
-  bool ssl_;
-  std::string ssl_key_;
-  std::string ssl_cert_;
-  std::string ssl_passwd_;
-  unsigned short ssl_port_;
+  unsigned short port;
+  bool ssl;
+  std::string ssl_key;
+  std::string ssl_cert;
+  std::string ssl_passwd;
+  unsigned short ssl_port;
 
-  // Mysql config
-  std::string mysql_url_;
-  std::string mysql_username_;
-  std::string mysql_password_;
+  std::string mysql_url;
+  std::string mysql_username;
+  std::string mysql_passwd;
 
-  // Redis config
-  std::string redis_ip_;
-  unsigned short redis_port_;
-  std::string redis_password_;
-  int redis_conn_timeout_;
-  int redis_rw_timeout_;
-  int redis_max_conns_;
-  int redis_lock_timeout_;
-  int redis_lock_try_time_;
+  std::string redis_ip;
+  unsigned short redis_port;
+  std::string redis_passwd;
+  int redis_conn_timeout;
+  int redis_rw_timeout;
+  int redis_max_conns;
+  int redis_lock_timeout;
+  int redis_lock_try_time;
 
-  //Rabbitmq config;
-  std::string rabbitmq_username_;
-  std::string rabbitmq_passwd_;
-  std::string rabbitmq_hostname_;
-  unsigned short rabbitmq_port_;
-  int rabbitmq_timeout_;
-  std::string uniquecast_exchange_;
-  std::string boardcast_exchange_;
+  std::string rabbitmq_username;
+  std::string rabbitmq_passwd;
+  std::string rabbitmq_hostname;
+  unsigned short rabbitmq_port;
+  int rabbitmq_timeout;
+  std::string uniquecast_exchange;
+  std::string boardcast_exchange;
 
-  int thread_num_;
-  int worker_num_;
-  std::string default_area_;
-  int erizo_agent_timeout_;
+  int socket_io_thread_num;
+  int erizo_controller_worker_num;
+  int erizo_agent_timeout;
+  std::map<int, std::string> server_mapping;
 
 private:
   Config();

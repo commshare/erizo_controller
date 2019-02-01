@@ -1,6 +1,23 @@
 #include "erizo_controller.h"
 
+#include "redis/redis_helper.h"
+#include "redis/redis_locker.h"
+#include "rabbitmq/amqp_rpc.h"
+#include "rabbitmq/amqp_recv.h"
+#include "common/utils.h"
+#include "common/config.h"
+#include "websocket/socket_io_server.h"
+#include "websocket/socket_io_client_handler.h"
+
 DEFINE_LOGGER(ErizoController, "ErizoController");
+
+ErizoController *ErizoController::instance_ = nullptr;
+ErizoController *ErizoController::getInstance()
+{
+    if (!instance_)
+        instance_ = new ErizoController;
+    return instance_;
+}
 
 ErizoController::ErizoController() : socket_io_(nullptr),
                                      amqp_(nullptr),
@@ -25,13 +42,13 @@ int ErizoController::init()
     if (init_)
         return 0;
 
-    thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->worker_num_));
+    thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->erizo_controller_worker_num));
     thread_pool_->start();
 
     amqp_ = std::make_shared<AMQPRPC>();
     if (amqp_->init())
     {
-        ELOG_ERROR("AMQP initialize failed");
+        ELOG_ERROR("amqp initialize failed");
         return 1;
     }
 
@@ -40,14 +57,14 @@ int ErizoController::init()
             onSignalingMessage(msg);
         }))
     {
-        ELOG_ERROR("AMQPRecv initialize failed");
+        ELOG_ERROR("amqp-recv initialize failed");
         return 1;
     }
 
     socket_io_ = std::make_shared<SocketIOServer>();
     if (socket_io_->init())
     {
-        ELOG_ERROR("SocketIO server initialize failed");
+        ELOG_ERROR("socket-io-server initialize failed");
         return 1;
     }
     socket_io_->onMessage([this](SocketIOClientHandler *hdl, const std::string &msg) {
@@ -89,49 +106,39 @@ int testtest = 1;
 int ErizoController::allocAgent(Client &client)
 {
     std::vector<ErizoAgent> agents;
-    if (client.ip_info.isp == edu::iptable::ISPType::AUTO_DETECT && client.ip_info.area == edu::iptable::AreaType::AREA_UNKNOWN)
+    auto it = Config::getInstance()->server_mapping.find((int)client.ip_info.area);
+    if (it == Config::getInstance()->server_mapping.end())
     {
-        if (RedisHelper::getAllErizoAgent(Config::getInstance()->default_area_, agents))
-        {
-            ELOG_ERROR("getAllErizoAgent failed");
-            return 1;
-        }
-
-        uint64_t now = Utils::getSystemMs();
-        std::vector<ErizoAgent> agents_alive;
-        for (const ErizoAgent &agent : agents)
-        {
-            if (now - agent.last_update < (uint64_t)Config::getInstance()->erizo_agent_timeout_)
-                agents_alive.push_back(agent);
-        }
-
-        // if (agents_alive.size() == 0)
-        // {
-        //     ELOG_ERROR("not erizo agent alive");
-        //     return 1;
-        // }
-        if (agents_alive.size() < 2)
-        {
-            ELOG_ERROR("not erizo agent alive");
-            return 1;
-        }
-
-        // std::sort(agents_alive.begin(), agents_alive.end(), [](ErizoAgent &a, ErizoAgent &b) {
-        //     return a.erizo_process_num < b.erizo_process_num;
-        // });
-        if (testtest % 2 == 0)
-        {
-            client.agent_id = agents_alive[0].id;
-        }
-        else
-        {
-            client.agent_id = agents_alive[1].id;
-        }
-        testtest++;
-        // client.agent_id = agents_alive[0].id;
-        return 0;
+        ELOG_ERROR("not server deploy on field %d", (int)client.ip_info.area);
+        return 1;
     }
-    return 1;
+
+    std::string name = it->second;
+    if (RedisHelper::getAllErizoAgent(name, agents))
+    {
+        ELOG_ERROR("getall erizo-agent from redis failed");
+        return 1;
+    }
+
+    uint64_t now = Utils::getSystemMs();
+    std::vector<ErizoAgent> agents_alive;
+    for (const ErizoAgent &agent : agents)
+    {
+        if (now - agent.last_update < (uint64_t)Config::getInstance()->erizo_agent_timeout)
+            agents_alive.push_back(agent);
+    }
+
+    if (agents_alive.size() == 0)
+    {
+        ELOG_ERROR("not erizo-agent alive on field %d", (int)client.ip_info.area);
+        return 1;
+    }
+
+    std::sort(agents_alive.begin(), agents_alive.end(), [](ErizoAgent &a, ErizoAgent &b) {
+        return a.erizo_process_num < b.erizo_process_num;
+    });
+    client.agent_id = agents_alive[0].id;
+    return 0;
 }
 
 int ErizoController::allocErizo(Client &client)
@@ -149,7 +156,7 @@ int ErizoController::allocErizo(Client &client)
     {
         try_time--;
         callback_done = false;
-        amqp_->rpc(Config::getInstance()->uniquecast_exchange_, queuename, queuename, data, [this, &client, &ret, &callback_done](const Json::Value &root) {
+        amqp_->rpc(Config::getInstance()->uniquecast_exchange, queuename, queuename, data, [this, &client, &ret, &callback_done](const Json::Value &root) {
             if (root.type() == Json::nullValue)
             {
                 ret = 1;
@@ -187,17 +194,23 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         Json::Value root;
         Json::Reader reader;
         if (!reader.parse(msg, root))
+        {
+            ELOG_ERROR("json parse root failed,dump %s", msg);
             return;
-
+        }
         if (!root.isMember("data") ||
             root["data"].type() != Json::objectValue)
+        {
+            ELOG_ERROR("json parse data failed,dump %s", msg);
             return;
-
+        }
         Json::Value data = root["data"];
         if (!data.isMember("type") || data["type"].type() != Json::stringValue ||
             !data.isMember("clientId") || data["clientId"].type() != Json::stringValue)
+        {
+            ELOG_ERROR("json parse [type/clientId] failed,dump %s", msg);
             return;
-
+        }
         std::string type = data["type"].asString();
         std::string client_id = data["clientId"].asString();
 
@@ -208,8 +221,10 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             if (!data.isMember("agentId") || data["agentId"].type() != Json::stringValue ||
                 !data.isMember("erizoId") || data["erizoId"].type() != Json::stringValue ||
                 !data.isMember("streamId") || data["streamId"].type() != Json::stringValue)
+            {
+                ELOG_ERROR("json parse [agentId/erizoId/streamId] failed,dump %s", msg);
                 return;
-
+            }
             std::string agent_id = data["agentId"].asString();
             std::string erizo_id = data["erizoId"].asString();
             std::string stream_id = data["streamId"].asString();
@@ -246,8 +261,10 @@ void ErizoController::onSignalingMessage(const std::string &msg)
                 !data.isMember("sdp") || data["sdp"].type() != Json::stringValue ||
                 !data.isMember("roomId") || data["roomId"].type() != Json::stringValue ||
                 !data.isMember("videoSSRC") || !data.isMember("audioSSRC"))
+            {
+                ELOG_ERROR("json parse [streamId/sdp/roomId/videoSSRC/audioSSRC] failed,dump %s", msg);
                 return;
-
+            }
             std::string room_id = data["roomId"].asString();
             std::string stream_id = data["streamId"].asString();
             std::string sdp = data["sdp"].asString();
@@ -257,27 +274,23 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             RedisLocker redis_locker;
             if (!redis_locker.lock(room_id))
             {
-                ELOG_ERROR("publisher_answer get redis locker failed");
+                ELOG_ERROR("get redis locker failed when publisher-answer");
                 return;
             }
 
             Publisher publisher;
             if (RedisHelper::getPublisher(room_id, stream_id, publisher))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("redis getPublisher failed");
+                ELOG_ERROR("get publisher from redis failed");
                 return;
             }
             publisher.video_ssrc = video_ssrc;
             publisher.audio_ssrc = audio_ssrc;
             if (RedisHelper::addPublisher(room_id, publisher))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("redis addPublisher failed");
+                ELOG_ERROR("add publisher to redis failed");
                 return;
             }
-
-            redis_locker.unlock();
 
             Json::Value event;
             event[0] = "signaling_message_erizo";
@@ -295,8 +308,10 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             if (!data.isMember("streamId") || data["streamId"].type() != Json::stringValue ||
                 !data.isMember("sdp") || data["sdp"].type() != Json::stringValue ||
                 !data.isMember("erizoId") || data["erizoId"].type() != Json::stringValue)
+            {
+                ELOG_ERROR("json parse [streamId/sdp/erizoId] failed,dump %s", msg);
                 return;
-
+            }
             std::string sdp = data["sdp"].asString();
             std::string erizo_id = data["erizoId"].asString();
             std::string stream_id = data["streamId"].asString();
@@ -316,30 +331,32 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         else if (type == "ready")
         {
             if (!data.isMember("streamId") || data["streamId"].type() != Json::stringValue)
-                return;
-
-            std::string stream_id = data["streamId"].asString();
-            //subscriber notify ready
-
-            if (!data.isMember("roomId") || data["roomId"].type() != Json::stringValue)
-                return;
-
-            std::string room_id = data["roomId"].asString();
-            //publishers notify ready
-            RedisLocker redis_locker;
-            if (!redis_locker.lock(room_id))
             {
-                ELOG_ERROR("notifyToSubscribe get redis locker failed");
+                ELOG_ERROR("json parse streamId failed,dump %s", msg);
                 return;
             }
-            notifyToSubscribe(room_id, client_id, stream_id);
-            redis_locker.unlock();
+            std::string stream_id = data["streamId"].asString();
+
+            if (data.isMember("roomId") || data["roomId"].type() == Json::stringValue)
+            {
+                std::string room_id = data["roomId"].asString();
+                RedisLocker redis_locker;
+                if (!redis_locker.lock(room_id))
+                {
+                    ELOG_ERROR("get redis locker failed when ready");
+                    return;
+                }
+                notifyToSubscribe(room_id, client_id, stream_id);
+            }
         }
         else if (type == "new_publisher")
         {
             if (!data.isMember("label") || data["label"].type() != Json::stringValue ||
                 !data.isMember("streamId") || data["streamId"].type() != Json::stringValue)
+            {
+                ELOG_ERROR("json parse [label/streamId] failed,dump %s", msg);
                 return;
+            }
             std::string label = data["label"].asString();
             std::string stream_id = data["streamId"].asString();
 
@@ -358,8 +375,10 @@ void ErizoController::onSignalingMessage(const std::string &msg)
         else if (type == "remove_subscriber")
         {
             if (!data.isMember("streamId") || data["streamId"].type() != Json::stringValue)
+            {
+                ELOG_ERROR("json parse streamId failed,dump %s", msg);
                 return;
-
+            }
             std::string stream_id = data["streamId"].asString();
 
             Json::Value event;
@@ -405,14 +424,14 @@ void ErizoController::notifyToSubscribe(const std::string &room_id, const std::s
         Publisher publisher;
         if (RedisHelper::getPublisher(room_id, stream_id, publisher))
         {
-            ELOG_ERROR("Redis getPublisher failed");
+            ELOG_ERROR("get publisher from redis failed");
             return;
         }
 
         std::vector<Client> clients;
         if (RedisHelper::getAllClient(room_id, clients))
         {
-            ELOG_ERROR("Redis getAllClient failed");
+            ELOG_ERROR("getall client from redis failed");
             return;
         }
 
@@ -425,10 +444,7 @@ void ErizoController::notifyToSubscribe(const std::string &room_id, const std::s
             root["streamId"] = stream_id;
             root["clientId"] = client.id;
             root["label"] = publisher.label;
-            amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
-                               client.reply_to,
-                               client.reply_to,
-                               root);
+            amqp_->rpcNotReply(client.reply_to, root);
         }
     });
 }
@@ -505,22 +521,16 @@ void ErizoController::processSignaling(const std::string &erizo_id,
     args[1] = stream_id;
     args[2] = msg;
     data["args"] = args;
-    amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
-                       queuename,
-                       queuename,
-                       data);
+    amqp_->rpcNotReply(queuename, data);
 }
 
 void ErizoController::notifyToRemoveSubscriber(const Subscriber &subscriber)
 {
-    Json::Value root;
-    root["type"] = "remove_subscriber";
-    root["streamId"] = subscriber.subscribe_to;
-    root["clientId"] = subscriber.client_id;
-    amqp_->sendMessage(Config::getInstance()->uniquecast_exchange_,
-                       subscriber.reply_to,
-                       subscriber.reply_to,
-                       root);
+    Json::Value data;
+    data["type"] = "remove_subscriber";
+    data["streamId"] = subscriber.subscribe_to;
+    data["clientId"] = subscriber.client_id;
+    amqp_->rpcNotReply(subscriber.reply_to, data);
 }
 
 void ErizoController::onClose(SocketIOClientHandler *hdl)
@@ -531,21 +541,19 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     RedisLocker redis_locker;
     if (!redis_locker.lock(client.room_id))
     {
-        ELOG_ERROR("onClose get redis locker failed");
+        ELOG_ERROR("get redis locker failed when on-close");
         return;
     }
     if (RedisHelper::getAllSubscriber(client.room_id, subscribers))
     {
-        redis_locker.unlock();
-        ELOG_ERROR("Redis getAllSubscriber failed");
+        ELOG_ERROR("getall subscriber from redis failed");
         return;
     }
 
     std::vector<Publisher> publishers;
     if (RedisHelper::getAllPublisher(client.room_id, publishers))
     {
-        redis_locker.unlock();
-        ELOG_ERROR("Redis getAllPublisher failed");
+        ELOG_ERROR("getall publisher from redis failed");
         return;
     }
 
@@ -559,8 +567,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
                 subscribers_to_del.push_back(subscriber.id);
                 if (removeBridgeStreamSub(client.id, subscriber.subscribe_to))
                 {
-                    redis_locker.unlock();
-                    ELOG_ERROR("removeBridgeStreamSub failed");
+                    ELOG_ERROR("remove bridge-stream-sub on redis failed");
                     return;
                 }
                 removeSubscriber(subscriber);
@@ -573,8 +580,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
             subscribers_to_del.push_back(subscriber.id);
             if (removeBridgeStreamSub(client.id, subscriber.subscribe_to))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("removeBridgeStreamSub failed");
+                ELOG_ERROR(" remove bridge-stream-sub on redis failed");
                 return;
             }
             removeSubscriber(subscriber);
@@ -590,8 +596,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
             publishers_to_del.push_back(publisher.id);
             if (removeBridgeStreamPub(client.room_id, publisher.id))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("removeBridgeStreamPub failed");
+                ELOG_ERROR("remove bridge-stream-pub on redis failed");
                 return;
             }
             removePublisher(publisher);
@@ -605,7 +610,6 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         RedisHelper::removePublishers(client.room_id, publishers_to_del);
 
     RedisHelper::removeClient(client.room_id, client.id);
-    redis_locker.unlock();
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
@@ -615,7 +619,7 @@ std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::st
     Json::Reader reader;
     if (!reader.parse(msg, root))
     {
-        ELOG_ERROR("Message parse failed");
+        ELOG_ERROR("json parse root failed,dump %s", msg);
         return "disconnect";
     }
 
@@ -624,7 +628,7 @@ std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::st
         root[0].type() != Json::stringValue ||
         root[1].type() != Json::objectValue)
     {
-        ELOG_ERROR("message error,%s", msg);
+        ELOG_ERROR("json parse args[num/type] failed,dump %s", msg);
         return "disconnect";
     }
     Json::Value reply = Json::nullValue;
@@ -666,14 +670,14 @@ Json::Value ErizoController::handleToken(Client &client, const Json::Value &root
 
     if (RedisHelper::addClient(client.room_id, client))
     {
-        ELOG_ERROR("addClient failed");
+        ELOG_ERROR("add client to redis failed");
         return Json::nullValue;
     }
 
     std::vector<Publisher> publishers;
     if (RedisHelper::getAllPublisher(client.room_id, publishers))
     {
-        ELOG_ERROR("getAllPublisher failed");
+        ELOG_ERROR("getall publisher from redis failed");
         return Json::nullValue;
     }
 
@@ -727,19 +731,17 @@ Json::Value ErizoController::handlePublish(Client &client, const Json::Value &ro
     RedisLocker redis_locker;
     if (!redis_locker.lock(client.room_id))
     {
-        ELOG_ERROR("handlePublish get redis locker failed");
+        ELOG_ERROR("get redis locker failed when handle-publish");
         return Json::nullValue;
     }
 
     if (RedisHelper::addPublisher(client.room_id, publisher))
     {
-        redis_locker.unlock();
-        ELOG_ERROR("Add publisher to redis failed");
+        ELOG_ERROR("add publisher to redis failed");
         return Json::nullValue;
     }
 
     addPublisher(client, publisher);
-    redis_locker.unlock();
 
     Json::Value reply;
     reply[0] = publisher.id;
@@ -752,7 +754,7 @@ Json::Value ErizoController::handleSubscribe(Client &client, const Json::Value &
     if (!root.isMember("streamId") ||
         root["streamId"].type() != Json::stringValue)
     {
-        ELOG_ERROR("Subscribe data format error");
+        ELOG_ERROR("json parse streamId failed,dump %s", Utils::dumpJson(root));
         return Json::nullValue;
     }
 
@@ -761,7 +763,7 @@ again:
     RedisLocker redis_locker;
     if (!redis_locker.lock(client.room_id))
     {
-        ELOG_ERROR("handleSubscribe get redis locker failed");
+        ELOG_ERROR("get redis locker failed when handle-subscribe");
         return Json::nullValue;
     }
 
@@ -769,14 +771,12 @@ again:
     Publisher publisher;
     if (RedisHelper::getPublisher(client.room_id, stream_id, publisher))
     {
-        redis_locker.unlock();
-        ELOG_ERROR("Publisher not exist");
+        ELOG_ERROR("get publisher from redis failed");
         return Json::nullValue;
     }
 
     if (publisher.video_ssrc == 0 || publisher.audio_ssrc == 0)
     {
-        redis_locker.unlock();
         if (try_time--)
         {
             usleep(100000); //100ms
@@ -797,8 +797,7 @@ again:
 
     if (RedisHelper::addSubscriber(client.room_id, subscriber))
     {
-        redis_locker.unlock();
-        ELOG_ERROR("Add Subscriber to redis failed");
+        ELOG_ERROR("add subscriber to redis failed");
         return Json::nullValue;
     }
 
@@ -808,7 +807,7 @@ again:
         if (RedisHelper::getAllBridgeStream(client.room_id, bridge_streams))
         {
             redis_locker.unlock();
-            ELOG_ERROR("get all bridge from redis stream failed");
+            ELOG_ERROR("getall bridge-stream from redis failed");
             return Json::nullValue;
         }
 
@@ -833,14 +832,13 @@ again:
             Publisher publisher;
             if (RedisHelper::getPublisher(client.room_id, bridge_stream.src_stream_id, publisher))
             {
-                ELOG_ERROR("redis getPublisher failed");
+                ELOG_ERROR("get publisher from redis failed");
                 return Json::nullValue;
             }
 
             if (RedisHelper::addBridgeStream(client.room_id, bridge_stream))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("add bridge stream to redis failed");
+                ELOG_ERROR("add bridge-stream to redis failed");
                 return Json::nullValue;
             }
 
@@ -853,15 +851,13 @@ again:
             bridge_stream.subscribe_count++;
             if (RedisHelper::addBridgeStream(client.room_id, bridge_stream))
             {
-                redis_locker.unlock();
-                ELOG_ERROR("add bridge stream to redis failed");
+                ELOG_ERROR("add bridge-stream to redis failed");
                 return Json::nullValue;
             }
         }
     }
 
     addSubscriber(publisher, subscriber);
-    redis_locker.unlock();
 
     Json::Value reply;
     reply[0] = true;
@@ -876,7 +872,7 @@ void ErizoController::handleSignaling(Client &client, const Json::Value &root)
         !root.isMember("msg") ||
         root["msg"].type() != Json::objectValue)
     {
-        ELOG_ERROR("Signaling message data format error");
+        ELOG_ERROR("json parse [streamId/msg] failed,dump %s", Utils::dumpJson(root));
         return;
     }
 
@@ -914,7 +910,7 @@ int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std
     std::vector<BridgeStream> bridge_streams;
     if (RedisHelper::getAllBridgeStream(room_id, bridge_streams))
     {
-        ELOG_ERROR("get all bridge stream from redis failed");
+        ELOG_ERROR("getall bridge-stream from redis failed");
         return 1;
     }
 
@@ -935,7 +931,7 @@ int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std
 
             if (RedisHelper::removeBridgeStream(room_id, bridge_stream.id))
             {
-                ELOG_ERROR("redis remove bridge stream failed");
+                ELOG_ERROR("remove bridge-stream on redis failed");
                 return 1;
             }
         }
@@ -943,7 +939,7 @@ int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std
         {
             if (RedisHelper::addBridgeStream(room_id, bridge_stream))
             {
-                ELOG_ERROR("redis remove bridge stream failed");
+                ELOG_ERROR("add bridge-stream to redis failed");
                 return 1;
             }
         }
@@ -956,7 +952,7 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
     std::vector<BridgeStream> bridge_streams;
     if (RedisHelper::getAllBridgeStream(room_id, bridge_streams))
     {
-        ELOG_ERROR("get all bridge stream from redis failed");
+        ELOG_ERROR("getall bridge-stream from redis failed");
         return 1;
     }
 
@@ -973,7 +969,7 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
         removeVirtualPublisher(bridge_stream);
         if (RedisHelper::removeBridgeStream(room_id, bridge_stream.id))
         {
-            ELOG_ERROR("redis remove bridge stream failed");
+            ELOG_ERROR("remove bridge-stream on redis failed");
             return 1;
         }
     }
