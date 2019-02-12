@@ -17,6 +17,8 @@
 
 #include "common/logger.h"
 
+class AMQPCli;
+
 class AMQPRPC
 {
     DECLARE_LOGGER();
@@ -59,14 +61,12 @@ class AMQPRPC
     void rpcNotReply(const std::string &queuename, const Json::Value &data);
 
   private:
-    int checkError(amqp_rpc_reply_t x);
     int send(const std::string &exchange,
              const std::string &queuename,
              const std::string &binding_key,
              const std::string &send_msg);
 
     void handleCallback(const std::string &msg);
-    std::string stringifyBytes(amqp_bytes_t bytes);
 
   private:
     std::mutex send_queue_mux_;
@@ -76,7 +76,8 @@ class AMQPRPC
 
     std::string reply_to_;
     std::atomic<uint32_t> index_;
-    amqp_connection_state_t conn_;
+
+    std::unique_ptr<AMQPCli> amqp_cli_;
     std::unique_ptr<std::thread> recv_thread_;
     std::unique_ptr<std::thread> send_thread_;
     std::unique_ptr<std::thread> check_thread_;

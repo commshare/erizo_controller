@@ -22,6 +22,7 @@ ErizoController *ErizoController::getInstance()
 ErizoController::ErizoController() : socket_io_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
+                                     amqp_boardcast_(nullptr),
                                      thread_pool_(nullptr),
                                      init_(false)
 {
@@ -53,11 +54,20 @@ int ErizoController::init()
     }
 
     amqp_signaling_ = std::make_shared<AMQPRecv>();
-    if (amqp_signaling_->init([this](const std::string &msg) {
+    if (amqp_signaling_->initUniquecast([this](const std::string &msg) {
             onSignalingMessage(msg);
         }))
     {
-        ELOG_ERROR("amqp-recv initialize failed");
+        ELOG_ERROR("amqp-signaling initialize failed");
+        return 1;
+    }
+
+    amqp_boardcast_ = std::make_shared<AMQPRecv>();
+    if (amqp_boardcast_->initBoardcast([this](const std::string &msg) {
+            onBoardcastMessage(msg);
+        }))
+    {
+        ELOG_ERROR("amqp-boardcast initialize failed");
         return 1;
     }
 
@@ -94,6 +104,10 @@ void ErizoController::close()
     amqp_signaling_->close();
     amqp_signaling_.reset();
     amqp_signaling_ = nullptr;
+
+    amqp_boardcast_->close();
+    amqp_boardcast_.reset();
+    amqp_boardcast_ = nullptr;
 
     thread_pool_->close();
     thread_pool_.reset();
@@ -974,4 +988,8 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
         }
     }
     return 0;
+}
+
+void ErizoController::onBoardcastMessage(const std::string &msg)
+{
 }

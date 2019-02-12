@@ -68,6 +68,8 @@ private:
 
   void onSignalingMessage(const std::string &msg);
 
+  void onBoardcastMessage(const std::string &msg);
+
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
 
   void onClose(SocketIOClientHandler *hdl);
@@ -87,6 +89,7 @@ private:
   std::shared_ptr<SocketIOServer> socket_io_;
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;
+  std::shared_ptr<AMQPRecv> amqp_boardcast_; 
   std::unique_ptr<erizo::ThreadPool> thread_pool_;
   bool init_;
 

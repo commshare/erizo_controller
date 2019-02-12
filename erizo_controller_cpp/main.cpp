@@ -5,7 +5,8 @@
 #include "redis/acl_redis.h"
 #include "core/erizo_controller.h"
 
-static log4cxx::LoggerPtr logger;
+LOGGER_DECLARE()
+
 static bool run = true;
 
 void signal_handler(int signo)
@@ -18,10 +19,7 @@ int main()
   srand(time(0));
   signal(SIGINT, signal_handler);
 
-  char buf[1024];
-  pid_t pid = getpid();
-  sprintf(buf, "[erizo-controller-%d]", pid);
-  logger = log4cxx::Logger::getLogger(buf);
+  LOGGER_INIT();
 
   if (Utils::initPath())
   {
