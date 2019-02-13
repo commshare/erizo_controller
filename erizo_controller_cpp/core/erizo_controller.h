@@ -81,8 +81,8 @@ private:
 
   void handleSignaling(Client &client, const Json::Value &root);
 
-  int removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id);
-  int removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to);
+  int removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id, const std::string &erizo_id);
+  int removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to, const std::string &erizo_id);
 
 private:
   std::shared_ptr<SocketIOServer> socket_io_;

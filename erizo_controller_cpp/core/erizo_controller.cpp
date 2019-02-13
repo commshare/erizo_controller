@@ -572,7 +572,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
             if (publisher.client_id == client.id && subscriber.subscribe_to == publisher.id)
             {
                 subscribers_to_del.push_back(subscriber.id);
-                if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to))
+                if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
                 {
                     ELOG_ERROR("remove bridge-stream-sub on redis failed");
                     return;
@@ -585,7 +585,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         if (subscriber.client_id == client.id)
         {
             subscribers_to_del.push_back(subscriber.id);
-            if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to))
+            if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
             {
                 ELOG_ERROR(" remove bridge-stream-sub on redis failed");
                 return;
@@ -602,7 +602,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
         if (publisher.client_id == client.id)
         {
             publishers_to_del.push_back(publisher.id);
-            if (removeBridgeStreamPub(client.room_id, publisher.id))
+            if (removeBridgeStreamPub(client.room_id, publisher.id, publisher.erizo_id))
             {
                 ELOG_ERROR("remove bridge-stream-pub on redis failed");
                 return;
@@ -819,8 +819,8 @@ again:
             return Json::nullValue;
         }
 
-        auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [&stream_id](const BridgeStream &bridge_stream) {
-            if (bridge_stream.src_stream_id == stream_id)
+        auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [&stream_id, &subscriber](const BridgeStream &bridge_stream) {
+            if (bridge_stream.src_stream_id == subscriber.subscribe_to && bridge_stream.recver_erizo_id == subscriber.erizo_id)
                 return true;
             return false;
         });
@@ -913,7 +913,7 @@ void ErizoController::removeVirtualSubscriber(const BridgeStream &bridge_stream)
     amqp_->rpcNotReply(queuename, data);
 }
 
-int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to)
+int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to, const std::string &erizo_id)
 {
     std::vector<BridgeStream> bridge_streams;
     if (RedisHelper::getAllBridgeStream(room_id, bridge_streams))
@@ -922,8 +922,8 @@ int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std
         return 1;
     }
 
-    auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [subscribe_to](const BridgeStream &s) {
-        if (s.src_stream_id == subscribe_to)
+    auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [&subscribe_to, &erizo_id](const BridgeStream &s) {
+        if (s.src_stream_id == subscribe_to && s.recver_erizo_id == erizo_id)
             return true;
         return false;
     });
@@ -955,7 +955,7 @@ int ErizoController::removeBridgeStreamSub(const std::string &room_id, const std
     return 0;
 }
 
-int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id)
+int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id, const std::string &erizo_id)
 {
     std::vector<BridgeStream> bridge_streams;
     if (RedisHelper::getAllBridgeStream(room_id, bridge_streams))
@@ -964,8 +964,8 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
         return 1;
     }
 
-    auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [stream_id](const BridgeStream &s) {
-        if (s.src_stream_id == stream_id)
+    auto it = std::find_if(bridge_streams.begin(), bridge_streams.end(), [&stream_id, &erizo_id](const BridgeStream &s) {
+        if (s.src_stream_id == stream_id && s.sender_erizo_id == erizo_id)
             return true;
         return false;
     });
