@@ -44,6 +44,7 @@ class SocketIOServer
     }
 
     void sendEvent(const std::string &client_id, const std::string &msg);
+    void closeConnection(const std::string &client_id);
 
   private:
     std::function<std::string(SocketIOClientHandler *hdl, const std::string &)> on_message_hdl_;

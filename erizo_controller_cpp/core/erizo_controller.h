@@ -8,9 +8,10 @@
 
 #include <json/json.h>
 
-#include "thread/thread_pool.h"
 #include "common/logger.h"
 #include "model/client.h"
+#include "model/subscriber.h"
+#include "model/publisher.h"
 #include "model/bridge_stream.h"
 
 class AMQPRPC;
@@ -68,8 +69,6 @@ private:
 
   void onSignalingMessage(const std::string &msg);
 
-  void onBoardcastMessage(const std::string &msg);
-
   std::string onMessage(SocketIOClientHandler *hdl, const std::string &msg);
 
   void onClose(SocketIOClientHandler *hdl);
@@ -89,7 +88,6 @@ private:
   std::shared_ptr<SocketIOServer> socket_io_;
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;
-  std::shared_ptr<AMQPRecv> amqp_boardcast_; 
   std::unique_ptr<erizo::ThreadPool> thread_pool_;
   bool init_;
 

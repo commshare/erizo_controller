@@ -112,7 +112,7 @@ int SocketIOServer::init()
                 std::unique_lock<std::mutex>(clients_mux_);
                 auto it = clients_.find(data.client_id);
                 if (it != clients_.end())
-                    it->second->sendEvent(data.message);
+                    it->second->sendMessage(data.message);
             }
             send_cond_.wait(lock);
         }
@@ -150,7 +150,18 @@ void SocketIOServer::close()
 
 void SocketIOServer::sendEvent(const std::string &client_id, const std::string &msg)
 {
+    std::ostringstream oss;
+    oss << "42";
+    oss << msg;
+
     std::unique_lock<std::mutex> lock(send_mux_);
-    send_queue_.push({client_id, msg});
+    send_queue_.push({client_id, oss.str()});
+    send_cond_.notify_one();
+}
+
+void SocketIOServer::closeConnection(const std::string &client_id)
+{
+    std::unique_lock<std::mutex> lock(send_mux_);
+    send_queue_.push({client_id, "41"});
     send_cond_.notify_one();
 }

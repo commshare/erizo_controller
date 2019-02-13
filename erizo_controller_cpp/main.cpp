@@ -1,3 +1,5 @@
+#include <signal.h>
+
 #include "common/utils.h"
 #include "common/logger.h"
 #include "common/config.h"

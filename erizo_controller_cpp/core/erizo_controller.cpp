@@ -8,6 +8,7 @@
 #include "common/config.h"
 #include "websocket/socket_io_server.h"
 #include "websocket/socket_io_client_handler.h"
+#include "thread/thread_pool.h"
 
 DEFINE_LOGGER(ErizoController, "ErizoController");
 
@@ -22,7 +23,6 @@ ErizoController *ErizoController::getInstance()
 ErizoController::ErizoController() : socket_io_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
-                                     amqp_boardcast_(nullptr),
                                      thread_pool_(nullptr),
                                      init_(false)
 {
@@ -62,15 +62,6 @@ int ErizoController::init()
         return 1;
     }
 
-    amqp_boardcast_ = std::make_shared<AMQPRecv>();
-    if (amqp_boardcast_->initBoardcast([this](const std::string &msg) {
-            onBoardcastMessage(msg);
-        }))
-    {
-        ELOG_ERROR("amqp-boardcast initialize failed");
-        return 1;
-    }
-
     socket_io_ = std::make_shared<SocketIOServer>();
     if (socket_io_->init())
     {
@@ -104,10 +95,6 @@ void ErizoController::close()
     amqp_signaling_->close();
     amqp_signaling_.reset();
     amqp_signaling_ = nullptr;
-
-    amqp_boardcast_->close();
-    amqp_boardcast_.reset();
-    amqp_boardcast_ = nullptr;
 
     thread_pool_->close();
     thread_pool_.reset();
@@ -402,6 +389,11 @@ void ErizoController::onSignalingMessage(const std::string &msg)
             event[1] = event_data;
             events.push_back(writer.write(event));
         }
+        else if (type == "notifyErizoProcessQuit")
+        {
+            socket_io_->closeConnection(client_id);
+            return;
+        }
 
         for (const std::string &event : events)
             socket_io_->sendEvent(client_id, event);
@@ -576,10 +568,11 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     {
         for (const Publisher &publisher : publishers)
         {
+            //删除订阅其他客户端订阅此客户端的流
             if (publisher.client_id == client.id && subscriber.subscribe_to == publisher.id)
             {
                 subscribers_to_del.push_back(subscriber.id);
-                if (removeBridgeStreamSub(client.id, subscriber.subscribe_to))
+                if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to))
                 {
                     ELOG_ERROR("remove bridge-stream-sub on redis failed");
                     return;
@@ -588,11 +581,11 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
                 notifyToRemoveSubscriber(subscriber);
             }
         }
-
+        //删除此客户端订阅的流
         if (subscriber.client_id == client.id)
         {
             subscribers_to_del.push_back(subscriber.id);
-            if (removeBridgeStreamSub(client.id, subscriber.subscribe_to))
+            if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to))
             {
                 ELOG_ERROR(" remove bridge-stream-sub on redis failed");
                 return;
@@ -605,6 +598,7 @@ void ErizoController::onClose(SocketIOClientHandler *hdl)
     std::vector<std::string> publishers_to_del;
     for (const Publisher &publisher : publishers)
     {
+        //删除此客户端推送的流
         if (publisher.client_id == client.id)
         {
             publishers_to_del.push_back(publisher.id);
@@ -988,22 +982,4 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
         }
     }
     return 0;
-}
-
-void ErizoController::onBoardcastMessage(const std::string &msg)
-{
-    Json::Value root;
-    Json::Reader reader(Json::Features::strictMode());
-    if (!reader.parse(msg, root))
-    {
-        ELOG_ERROR("json parse root failed,dump %s", msg);
-        return;
-    }
-    if (root.isMember("data") == Json::nullValue ||
-        root["data"].type() != Json::objectValue)
-    {
-        ELOG_ERROR("json parse data failed,dump %s", msg);
-        return;
-    }
-    Json::Value data = root["data"];
 }

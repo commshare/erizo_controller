@@ -47,8 +47,8 @@ class SocketIOClientHandler
     void onClose();
 
     void handleMessage(const std::string &msg);
-    void sendEvent(const std::string &msg);
     void sendMessage(const std::string &msg);
+
     Client &getClient()
     {
         return client_;

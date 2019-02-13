@@ -114,11 +114,3 @@ void SocketIOClientHandler::sendMessage(const std::string &msg)
     if (ws_ != nullptr)
         ws_->send(msg.c_str(), msg.length(), uWS::OpCode::TEXT);
 }
-
-void SocketIOClientHandler::sendEvent(const std::string &msg)
-{
-    std::ostringstream oss;
-    oss << "42";
-    oss << msg;
-    sendMessage(oss.str());
-}
