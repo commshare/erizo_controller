@@ -33,7 +33,7 @@ struct Subscriber
     static int fromJSON(const std::string &json, Subscriber &subscriber)
     {
         Json::Value root;
-        Json::Reader reader;
+        Json::Reader reader(Json::Features::strictMode());
         if (!reader.parse(json, root))
             return 1;
 

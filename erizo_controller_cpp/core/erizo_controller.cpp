@@ -206,7 +206,7 @@ void ErizoController::onSignalingMessage(const std::string &msg)
 {
     asyncTask([=]() {
         Json::Value root;
-        Json::Reader reader;
+        Json::Reader reader(Json::Features::strictMode());
         if (!reader.parse(msg, root))
         {
             ELOG_ERROR("json parse root failed,dump %s", msg);
@@ -630,7 +630,7 @@ std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::st
 {
     Client &client = hdl->getClient();
     Json::Value root;
-    Json::Reader reader;
+    Json::Reader reader(Json::Features::strictMode());
     if (!reader.parse(msg, root))
     {
         ELOG_ERROR("json parse root failed,dump %s", msg);
@@ -992,4 +992,18 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
 
 void ErizoController::onBoardcastMessage(const std::string &msg)
 {
+    Json::Value root;
+    Json::Reader reader(Json::Features::strictMode());
+    if (!reader.parse(msg, root))
+    {
+        ELOG_ERROR("json parse root failed,dump %s", msg);
+        return;
+    }
+    if (root.isMember("data") == Json::nullValue ||
+        root["data"].type() != Json::objectValue)
+    {
+        ELOG_ERROR("json parse data failed,dump %s", msg);
+        return;
+    }
+    Json::Value data = root["data"];
 }

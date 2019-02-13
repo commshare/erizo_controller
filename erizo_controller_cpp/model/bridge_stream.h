@@ -38,7 +38,7 @@ struct BridgeStream
     static int fromJSON(const std::string &json, BridgeStream &bridge_stream)
     {
         Json::Value root;
-        Json::Reader reader;
+        Json::Reader reader(Json::Features::strictMode());
         if (!reader.parse(json, root))
             return 1;
         if (!root.isMember("id") ||

@@ -37,7 +37,7 @@ struct Publisher
     static int fromJSON(const std::string &json, Publisher &publisher)
     {
         Json::Value root;
-        Json::Reader reader;
+        Json::Reader reader(Json::Features::strictMode());
         if (!reader.parse(json, root))
             return 1;
 

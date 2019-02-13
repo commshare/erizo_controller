@@ -25,7 +25,7 @@ struct ErizoAgent
     static int fromJSON(const std::string &json, ErizoAgent &agent)
     {
         Json::Value root;
-        Json::Reader reader;
+        Json::Reader reader(Json::Features::strictMode());
         if (!reader.parse(json, root))
             return 1;
 

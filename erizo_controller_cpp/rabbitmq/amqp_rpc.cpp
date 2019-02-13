@@ -131,7 +131,7 @@ void AMQPRPC::close()
 void AMQPRPC::handleCallback(const std::string &msg)
 {
     Json::Value root;
-    Json::Reader reader;
+    Json::Reader reader(Json::Features::strictMode());
     if (!reader.parse(msg, root))
         return;
 
