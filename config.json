@@ -37,7 +37,7 @@
         "server": [
             {
                 "id": 0,
-                "name": "default_area"
+                "name": "default"
             }
         ],
         "erizo_agent_timeout": 10000,

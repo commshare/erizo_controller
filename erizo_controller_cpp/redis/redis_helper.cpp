@@ -6,7 +6,7 @@
 
 int RedisHelper::addClient(const std::string &room_id, const Client &client)
 {
-    std::string key = "clients_" + room_id;
+    std::string key = "client_" + room_id;
     if (ACLRedis::getInstance()->hset(key, client.id, client.toJSON()) == -1)
         return 1;
     return 0;
@@ -14,7 +14,7 @@ int RedisHelper::addClient(const std::string &room_id, const Client &client)
 
 int RedisHelper::removeClient(const std::string &room_id, const std::string &client_id)
 {
-    std::string key = "clients_" + room_id;
+    std::string key = "client_" + room_id;
     if (ACLRedis::getInstance()->hdel(key, client_id) == -1)
         return 1;
     return 0;
@@ -22,7 +22,7 @@ int RedisHelper::removeClient(const std::string &room_id, const std::string &cli
 
 int RedisHelper::getAllClient(const std::string &room_id, std::vector<Client> &clients)
 {
-    std::string key = "clients_" + room_id;
+    std::string key = "client_" + room_id;
     std::vector<std::string> fields, values;
     if (ACLRedis::getInstance()->hvals(key, fields, values) == -1)
         return 1;
@@ -38,7 +38,7 @@ int RedisHelper::getAllClient(const std::string &room_id, std::vector<Client> &c
 
 int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubilsher)
 {
-    std::string key = "publishers_" + room_id;
+    std::string key = "publisher_" + room_id;
     if (ACLRedis::getInstance()->hset(key, pubilsher.id, pubilsher.toJSON()) == -1)
         return 1;
     return 0;
@@ -46,7 +46,7 @@ int RedisHelper::addPublisher(const std::string &room_id, const Publisher &pubil
 
 int RedisHelper::getPublisher(const std::string &room_id, const std::string &publisher_id, Publisher &publisher)
 {
-    std::string key = "publishers_" + room_id;
+    std::string key = "publisher_" + room_id;
     std::string buf;
     if (ACLRedis::getInstance()->hget(key, publisher_id, buf) == -1)
         return 1;
@@ -58,7 +58,7 @@ int RedisHelper::getPublisher(const std::string &room_id, const std::string &pub
 
 int RedisHelper::removePublishers(const std::string &room_id, const std::vector<std::string> &publisher_ids)
 {
-    std::string key = "publishers_" + room_id;
+    std::string key = "publisher_" + room_id;
     if (ACLRedis::getInstance()->hdel(key, publisher_ids) == -1)
         return 1;
     return 0;
@@ -66,7 +66,7 @@ int RedisHelper::removePublishers(const std::string &room_id, const std::vector<
 
 int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publisher> &publishers)
 {
-    std::string key = "publishers_" + room_id;
+    std::string key = "publisher_" + room_id;
     std::vector<std::string> fields, values;
     if (ACLRedis::getInstance()->hvals(key, fields, values) == -1)
         return 1;
@@ -82,7 +82,7 @@ int RedisHelper::getAllPublisher(const std::string &room_id, std::vector<Publish
 
 int RedisHelper::addSubscriber(const std::string &room_id, const Subscriber &subscriber)
 {
-    std::string key = "subscribers_" + room_id;
+    std::string key = "subscriber_" + room_id;
     if (ACLRedis::getInstance()->hset(key, subscriber.id, subscriber.toJSON()) == -1)
         return 1;
     return 0;
@@ -90,7 +90,7 @@ int RedisHelper::addSubscriber(const std::string &room_id, const Subscriber &sub
 
 int RedisHelper::removeSubscribers(const std::string &room_id, const std::vector<std::string> &subscriber_ids)
 {
-    std::string key = "subscribers_" + room_id;
+    std::string key = "subscriber_" + room_id;
     if (ACLRedis::getInstance()->hdel(key, subscriber_ids) == -1)
         return 1;
     return 0;
@@ -98,7 +98,7 @@ int RedisHelper::removeSubscribers(const std::string &room_id, const std::vector
 
 int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscriber> &subscribers)
 {
-    std::string key = "subscribers_" + room_id;
+    std::string key = "subscriber_" + room_id;
     std::vector<std::string> fields, values;
     if (ACLRedis::getInstance()->hvals(key, fields, values) == -1)
         return 1;
@@ -115,7 +115,7 @@ int RedisHelper::getAllSubscriber(const std::string &room_id, std::vector<Subscr
 int RedisHelper::getAllErizoAgent(const std::string &area, std::vector<ErizoAgent> &agents)
 {
     std::vector<std::string> fields, values;
-    std::string key = "erizo_agent_" + area;
+    std::string key = "erizo_agent_" + area + "_heartbeat";
     if (ACLRedis::getInstance()->hvals(key, fields, values) == -1)
         return 1;
     agents.clear();

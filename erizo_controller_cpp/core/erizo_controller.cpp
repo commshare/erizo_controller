@@ -1019,7 +1019,7 @@ void ErizoController::removeClient(const Client &client)
     {
         for (const Publisher &publisher : publishers)
         {
-            //删除订阅其他客户端订阅此客户端的流
+            //删除其他客户端订阅此客户端的流
             if (publisher.client_id == client.id && subscriber.subscribe_to == publisher.id)
             {
                 subscribers_to_del.push_back(subscriber.id);
