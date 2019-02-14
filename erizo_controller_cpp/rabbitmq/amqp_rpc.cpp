@@ -18,13 +18,13 @@ AMQPRPC::AMQPRPC() : reply_to_(""),
 
 AMQPRPC::~AMQPRPC() {}
 
-int AMQPRPC::init()
+int AMQPRPC::init(const std::string &binding_key)
 {
     if (init_)
         return 0;
 
     amqp_cli_ = std::unique_ptr<AMQPCli>(new AMQPCli);
-    if (amqp_cli_->init(Config::getInstance()->uniquecast_exchange))
+    if (amqp_cli_->init(Config::getInstance()->uniquecast_exchange, "direct", binding_key))
     {
         ELOG_ERROR("amqp-cli initialize failed");
         return 1;

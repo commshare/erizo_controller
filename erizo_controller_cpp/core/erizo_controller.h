@@ -85,6 +85,7 @@ private:
   int removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to, const std::string &erizo_id);
 
 private:
+  std::string id_;
   std::shared_ptr<SocketIOServer> socket_io_;
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;

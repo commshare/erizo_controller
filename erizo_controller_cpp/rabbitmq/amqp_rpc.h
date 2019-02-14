@@ -49,7 +49,7 @@ class AMQPRPC
     AMQPRPC();
     ~AMQPRPC();
 
-    int init();
+    int init(const std::string &binding_key);
     void close();
 
     void rpc(const std::string &exchange,

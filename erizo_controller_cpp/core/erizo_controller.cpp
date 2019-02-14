@@ -20,7 +20,8 @@ ErizoController *ErizoController::getInstance()
     return instance_;
 }
 
-ErizoController::ErizoController() : socket_io_(nullptr),
+ErizoController::ErizoController() : id_(""),
+                                     socket_io_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
                                      thread_pool_(nullptr),
@@ -34,8 +35,11 @@ ErizoController::~ErizoController()
 
 void ErizoController::asyncTask(const std::function<void()> &func)
 {
-    std::shared_ptr<erizo::Worker> worker = thread_pool_->getLessUsedWorker();
-    worker->task(func);
+    if (thread_pool_ != nullptr)
+    {
+        std::shared_ptr<erizo::Worker> worker = thread_pool_->getLessUsedWorker();
+        worker->task(func);
+    }
 }
 
 int ErizoController::init()
@@ -43,18 +47,21 @@ int ErizoController::init()
     if (init_)
         return 0;
 
+    id_ = "ec_" + Utils::getUUID();
+
     thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->erizo_controller_worker_num));
     thread_pool_->start();
 
+    std::string amqp_binding_key = id_ + "_rpc";
     amqp_ = std::make_shared<AMQPRPC>();
-    if (amqp_->init())
+    if (amqp_->init(amqp_binding_key))
     {
         ELOG_ERROR("amqp initialize failed");
         return 1;
     }
 
     amqp_signaling_ = std::make_shared<AMQPRecv>();
-    if (amqp_signaling_->initUniquecast([this](const std::string &msg) {
+    if (amqp_signaling_->init(id_, [this](const std::string &msg) {
             onSignalingMessage(msg);
         }))
     {
@@ -84,6 +91,10 @@ void ErizoController::close()
     if (!init_)
         return;
 
+    thread_pool_->close();
+    thread_pool_.reset();
+    thread_pool_ = nullptr;
+
     socket_io_->close();
     socket_io_.reset();
     socket_io_ = nullptr;
@@ -96,10 +107,7 @@ void ErizoController::close()
     amqp_signaling_.reset();
     amqp_signaling_ = nullptr;
 
-    thread_pool_->close();
-    thread_pool_.reset();
-    thread_pool_ = nullptr;
-
+    id_ = "";
     init_ = false;
 }
 

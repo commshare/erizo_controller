@@ -19,8 +19,7 @@ public:
   AMQPRecv();
   ~AMQPRecv();
 
-  int initUniquecast(const std::function<void(const std::string &msg)> &func);
-  int initBoardcast(const std::function<void(const std::string &msg)> &func);
+  int init(const std::string &binding_key, const std::function<void(const std::string &msg)> &func);
   void close();
   const std::string &getReplyTo();
 
