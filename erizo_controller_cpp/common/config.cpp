@@ -37,6 +37,8 @@ Config::Config()
     erizo_controller_worker_num = 5;
     socket_io_thread_num = 20;
     erizo_agent_timeout = 10000;
+    erizo_controller_update_interval = 1000;
+    erizo_controller_timeout = 3000;
 }
 
 Config *Config::getInstance()
@@ -157,7 +159,11 @@ int Config::init(const std::string &config_file)
         !other.isMember("server") ||
         other["server"].type() != Json::arrayValue ||
         !other.isMember("erizo_agent_timeout") ||
-        other["erizo_agent_timeout"].type() != Json::intValue)
+        other["erizo_agent_timeout"].type() != Json::intValue ||
+        !other.isMember("erizo_controller_update_interval") ||
+        other["erizo_controller_update_interval"].type() != Json::intValue ||
+        !other.isMember("erizo_controller_timeout") ||
+        other["erizo_controller_timeout"].type() != Json::intValue)
     {
         ELOG_ERROR("other config check error");
         return 1;
@@ -194,14 +200,15 @@ int Config::init(const std::string &config_file)
     erizo_controller_worker_num = other["erizo_controller_worker_num"].asInt();
     socket_io_thread_num = other["socket_io_thread_num"].asInt();
     erizo_agent_timeout = other["erizo_agent_timeout"].asInt();
-
+    erizo_controller_timeout = other["erizo_controller_timeout"].asInt();
+    erizo_controller_update_interval = other["erizo_controller_update_interval"].asInt();
 
     Json::Value server_items = other["server"];
     for (size_t i = 0; i < server_items.size(); i++)
     {
         if (server_items[(int)i].type() != Json::objectValue)
             continue;
- 
+
         Json::Value item = server_items[(int)i];
         if (!item.isMember("id") || item["id"].type() != Json::intValue ||
             !item.isMember("name") || item["name"].type() != Json::stringValue)

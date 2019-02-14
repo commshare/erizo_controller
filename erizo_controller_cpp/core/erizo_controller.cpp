@@ -21,6 +21,8 @@ ErizoController *ErizoController::getInstance()
 }
 
 ErizoController::ErizoController() : id_(""),
+                                     run_(false),
+                                     heartbeat_thread_(nullptr),
                                      socket_io_(nullptr),
                                      amqp_(nullptr),
                                      amqp_signaling_(nullptr),
@@ -48,6 +50,8 @@ int ErizoController::init()
         return 0;
 
     id_ = "ec_" + Utils::getUUID();
+    heartbeat_.id = id_;
+    heartbeat_.last_update = 0;
 
     thread_pool_ = std::unique_ptr<erizo::ThreadPool>(new erizo::ThreadPool(Config::getInstance()->erizo_controller_worker_num));
     thread_pool_->start();
@@ -82,6 +86,55 @@ int ErizoController::init()
         onClose(hdl);
     });
 
+    run_ = true;
+    heartbeat_thread_ = std::unique_ptr<std::thread>(new std::thread([this]() {
+        uint64_t update_interval = (uint64_t)Config::getInstance()->erizo_controller_update_interval;
+        uint64_t timeout = (uint64_t)Config::getInstance()->erizo_controller_timeout;
+
+        while (run_)
+        {
+            uint64_t now = Utils::getSystemMs();
+
+            RedisLocker redis_locker;
+            redis_locker.lock("erizo_controller_heartbeat_locker");
+
+            if (now - heartbeat_.last_update > update_interval)
+            {
+                heartbeat_.last_update = now;
+                if (RedisHelper::addHeartbeatData(heartbeat_))
+                {
+                    ELOG_ERROR("add heartbeat-data to redis failed");
+                    return;
+                }
+            }
+            std::vector<HEARTBEAT> heartbeats;
+            if (RedisHelper::getAllHeartbeatData(heartbeats))
+            {
+                ELOG_ERROR("get all heartbeat-data from redis failed");
+                return;
+            }
+
+            for (const HEARTBEAT &data : heartbeats)
+            {
+                if (data.id == id_)
+                    continue;
+                if (data.last_update - now > timeout)
+                {
+                    //过期
+                    RedisHelper::removeHeartbeatData(data.id);
+                    asyncTask([this, data]() {
+                        //清除过期的erizo_controller
+                        ELOG_WARN("erizo-controller %s expire", data.id);
+                        removeExpireErizoController(data.id);
+                    });
+                }
+            }
+            redis_locker.unlock();
+            usleep(500000); //500ms
+        }
+        RedisHelper::removeHeartbeatData(id_);
+    }));
+
     init_ = true;
     return 0;
 }
@@ -94,6 +147,11 @@ void ErizoController::close()
     thread_pool_->close();
     thread_pool_.reset();
     thread_pool_ = nullptr;
+
+    run_ = false;
+    heartbeat_thread_->join();
+    heartbeat_thread_.reset();
+    heartbeat_thread_ = nullptr;
 
     socket_io_->close();
     socket_io_.reset();
@@ -549,83 +607,7 @@ void ErizoController::notifyToRemoveSubscriber(const Subscriber &subscriber)
 
 void ErizoController::onClose(SocketIOClientHandler *hdl)
 {
-    Client &client = hdl->getClient();
-    std::vector<Subscriber> subscribers;
-
-    RedisLocker redis_locker;
-    if (!redis_locker.lock(client.room_id))
-    {
-        ELOG_ERROR("get redis locker failed when on-close");
-        return;
-    }
-    if (RedisHelper::getAllSubscriber(client.room_id, subscribers))
-    {
-        ELOG_ERROR("getall subscriber from redis failed");
-        return;
-    }
-
-    std::vector<Publisher> publishers;
-    if (RedisHelper::getAllPublisher(client.room_id, publishers))
-    {
-        ELOG_ERROR("getall publisher from redis failed");
-        return;
-    }
-
-    std::vector<std::string> subscribers_to_del;
-    for (const Subscriber &subscriber : subscribers)
-    {
-        for (const Publisher &publisher : publishers)
-        {
-            //删除订阅其他客户端订阅此客户端的流
-            if (publisher.client_id == client.id && subscriber.subscribe_to == publisher.id)
-            {
-                subscribers_to_del.push_back(subscriber.id);
-                if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
-                {
-                    ELOG_ERROR("remove bridge-stream-sub on redis failed");
-                    return;
-                }
-                removeSubscriber(subscriber);
-                notifyToRemoveSubscriber(subscriber);
-            }
-        }
-        //删除此客户端订阅的流
-        if (subscriber.client_id == client.id)
-        {
-            subscribers_to_del.push_back(subscriber.id);
-            if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
-            {
-                ELOG_ERROR(" remove bridge-stream-sub on redis failed");
-                return;
-            }
-            removeSubscriber(subscriber);
-            notifyToRemoveSubscriber(subscriber);
-        }
-    }
-
-    std::vector<std::string> publishers_to_del;
-    for (const Publisher &publisher : publishers)
-    {
-        //删除此客户端推送的流
-        if (publisher.client_id == client.id)
-        {
-            publishers_to_del.push_back(publisher.id);
-            if (removeBridgeStreamPub(client.room_id, publisher.id, publisher.erizo_id))
-            {
-                ELOG_ERROR("remove bridge-stream-pub on redis failed");
-                return;
-            }
-            removePublisher(publisher);
-        }
-    }
-
-    if (!subscribers_to_del.empty())
-        RedisHelper::removeSubscribers(client.room_id, subscribers_to_del);
-
-    if (!publishers_to_del.empty())
-        RedisHelper::removePublishers(client.room_id, publishers_to_del);
-
-    RedisHelper::removeClient(client.room_id, client.id);
+    removeClient(hdl->getClient());
 }
 
 std::string ErizoController::onMessage(SocketIOClientHandler *hdl, const std::string &msg)
@@ -687,6 +669,13 @@ Json::Value ErizoController::handleToken(Client &client, const Json::Value &root
     if (RedisHelper::addClient(client.room_id, client))
     {
         ELOG_ERROR("add client to redis failed");
+        return Json::nullValue;
+    }
+
+    //新的用户加入,将其写入此erizo_controller维护的redis集合
+    if (RedisHelper::addClientToEC(id_, client))
+    {
+        ELOG_ERROR("add client to redis failed(ec)");
         return Json::nullValue;
     }
 
@@ -990,4 +979,95 @@ int ErizoController::removeBridgeStreamPub(const std::string &room_id, const std
         }
     }
     return 0;
+}
+
+void ErizoController::removeExpireErizoController(const std::string &erizo_controller_id)
+{
+    std::vector<Client> clients;
+    if (RedisHelper::getAllClientFromEC(erizo_controller_id, clients))
+        return;
+
+    for (const Client &client : clients)
+        removeClient(client);
+}
+
+void ErizoController::removeClient(const Client &client)
+{
+    std::vector<Subscriber> subscribers;
+    std::vector<Publisher> publishers;
+    std::vector<std::string> subscribers_to_del;
+    std::vector<std::string> publishers_to_del;
+
+    RedisLocker redis_locker;
+    if (!redis_locker.lock(client.room_id))
+    {
+        ELOG_ERROR("get redis locker failed when on-close");
+        return;
+    }
+    if (RedisHelper::getAllSubscriber(client.room_id, subscribers))
+    {
+        ELOG_ERROR("getall subscriber from redis failed");
+        return;
+    }
+
+    if (RedisHelper::getAllPublisher(client.room_id, publishers))
+    {
+        ELOG_ERROR("getall publisher from redis failed");
+        return;
+    }
+    for (const Subscriber &subscriber : subscribers)
+    {
+        for (const Publisher &publisher : publishers)
+        {
+            //删除订阅其他客户端订阅此客户端的流
+            if (publisher.client_id == client.id && subscriber.subscribe_to == publisher.id)
+            {
+                subscribers_to_del.push_back(subscriber.id);
+                if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
+                {
+                    ELOG_ERROR("remove bridge-stream-sub on redis failed");
+                    return;
+                }
+                removeSubscriber(subscriber);
+                notifyToRemoveSubscriber(subscriber);
+            }
+        }
+        //删除此客户端订阅的流
+        if (subscriber.client_id == client.id)
+        {
+            subscribers_to_del.push_back(subscriber.id);
+            if (subscriber.is_bridge && removeBridgeStreamSub(client.room_id, subscriber.subscribe_to, subscriber.erizo_id))
+            {
+                ELOG_ERROR(" remove bridge-stream-sub on redis failed");
+                return;
+            }
+            removeSubscriber(subscriber);
+            notifyToRemoveSubscriber(subscriber);
+        }
+    }
+
+    for (const Publisher &publisher : publishers)
+    {
+        //删除此客户端推送的流
+        if (publisher.client_id == client.id)
+        {
+            publishers_to_del.push_back(publisher.id);
+            if (removeBridgeStreamPub(client.room_id, publisher.id, publisher.erizo_id))
+            {
+                ELOG_ERROR("remove bridge-stream-pub on redis failed");
+                return;
+            }
+            removePublisher(publisher);
+        }
+    }
+
+    if (!subscribers_to_del.empty())
+        RedisHelper::removeSubscribers(client.room_id, subscribers_to_del);
+
+    if (!publishers_to_del.empty())
+        RedisHelper::removePublishers(client.room_id, publishers_to_del);
+
+    RedisHelper::removeClient(client.room_id, client.id);
+    //从此erizo_controller维护的redis集合中删除该用户信息
+    RedisHelper::removeClientFromEC(client.reply_to, client.id);
 }

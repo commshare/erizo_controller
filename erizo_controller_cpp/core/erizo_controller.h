@@ -29,6 +29,40 @@ class ErizoController
   DECLARE_LOGGER();
 
 public:
+  struct HEARTBEAT
+  {
+    std::string id;
+    uint64_t last_update;
+    HEARTBEAT() : id(""),
+                  last_update(0) {}
+
+    const std::string toJSON() const
+    {
+      Json::Value root;
+      root["id"] = id;
+      root["last_update"] = last_update;
+      Json::FastWriter writer;
+      return writer.write(root);
+    }
+
+    static int fromJSON(const std::string &json, HEARTBEAT &data)
+    {
+      Json::Value root;
+      Json::Reader reader(Json::Features::strictMode());
+      if (!reader.parse(json, root))
+        return 1;
+      if (!root.isMember("id") ||
+          root["id"].type() != Json::stringValue ||
+          !root.isMember("last_update") ||
+          root["last_update"].type() != Json::uintValue)
+        return 1;
+
+      data.id = root["id"].asString();
+      data.last_update = root["last_update"].asUInt64();
+      return 0;
+    }
+  };
+
   ~ErizoController();
   static ErizoController *getInstance();
 
@@ -84,8 +118,14 @@ private:
   int removeBridgeStreamPub(const std::string &room_id, const std::string &stream_id, const std::string &erizo_id);
   int removeBridgeStreamSub(const std::string &room_id, const std::string &subscribe_to, const std::string &erizo_id);
 
+  void removeExpireErizoController(const std::string &erizo_controller_id);
+  void removeClient(const Client &client);
+
 private:
   std::string id_;
+  HEARTBEAT heartbeat_;
+  std::atomic<bool> run_;
+  std::unique_ptr<std::thread> heartbeat_thread_;
   std::shared_ptr<SocketIOServer> socket_io_;
   std::shared_ptr<AMQPRPC> amqp_;
   std::shared_ptr<AMQPRecv> amqp_signaling_;

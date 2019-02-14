@@ -1,6 +1,7 @@
 #ifndef REDIS_HELPER_H
 #define REDIS_HELPER_H
 
+#include "core/erizo_controller.h"
 #include "model/publisher.h"
 #include "model/subscriber.h"
 #include "model/room.h"
@@ -30,6 +31,14 @@ public:
   static int getBridgeStream(const std::string &room_id, const std::string &bridge_stream_id, BridgeStream &bridge_stream);
   static int removeBridgeStream(const std::string &room_id, const std::string &bridge_stream_id);
   static int getAllBridgeStream(const std::string &room_id, std::vector<BridgeStream> &bridge_streams);
+
+  static int addClientToEC(const std::string &erizo_controller_id, const Client &client);
+  static int removeClientFromEC(const std::string &erizo_controller_id, const std::string &client_id);
+  static int getAllClientFromEC(const std::string &erizo_controller_id, std::vector<Client> &clients);
+
+  static int addHeartbeatData(const ErizoController::HEARTBEAT &heartbeat_data);
+  static int removeHeartbeatData(const std::string &erizo_controller_id);
+  static int getAllHeartbeatData(std::vector<ErizoController::HEARTBEAT> &heartbeats);
 };
 
 #endif

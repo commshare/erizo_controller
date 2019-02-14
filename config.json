@@ -40,6 +40,8 @@
                 "name": "default_area"
             }
         ],
-        "erizo_agent_timeout": 10000
+        "erizo_agent_timeout": 10000,
+        "erizo_controller_update_interval": 1000,
+        "erizo_controller_timeout": 3000
     }
 }

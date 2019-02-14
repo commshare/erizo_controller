@@ -49,6 +49,8 @@ public:
   int socket_io_thread_num;
   int erizo_controller_worker_num;
   int erizo_agent_timeout;
+  int erizo_controller_update_interval;
+  int erizo_controller_timeout;
   std::map<int, std::string> server_mapping;
 
 private:

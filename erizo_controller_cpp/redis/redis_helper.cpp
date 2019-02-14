@@ -170,3 +170,58 @@ int RedisHelper::removeBridgeStream(const std::string &room_id, const std::strin
         return 1;
     return 0;
 }
+
+int RedisHelper::addClientToEC(const std::string &erizo_controller_id, const Client &client)
+{
+    if (ACLRedis::getInstance()->hset(erizo_controller_id, client.id, client.toJSON()) == -1)
+        return 1;
+    return 0;
+}
+
+int RedisHelper::removeClientFromEC(const std::string &erizo_controller_id, const std::string &client_id)
+{
+    if (ACLRedis::getInstance()->hdel(erizo_controller_id, client_id) == -1)
+        return 1;
+    return 0;
+}
+int RedisHelper::getAllClientFromEC(const std::string &erizo_controller_id, std::vector<Client> &clients)
+{
+    std::vector<std::string> fields, values;
+    if (ACLRedis::getInstance()->hvals(erizo_controller_id, fields, values) == -1)
+        return 1;
+    clients.clear();
+    for (std::string &v : values)
+    {
+        Client c;
+        if (!Client::fromJSON(v, c))
+            clients.push_back(c);
+    }
+    return 0;
+}
+
+int RedisHelper::addHeartbeatData(const ErizoController::HEARTBEAT &heartbeat_data)
+{
+    if (ACLRedis::getInstance()->hset("erizo_controller_heartbeat", heartbeat_data.id, heartbeat_data.toJSON()) == -1)
+        return 1;
+    return 0;
+}
+int RedisHelper::removeHeartbeatData(const std::string &id)
+{
+    if (ACLRedis::getInstance()->hdel("erizo_controller_heartbeat", id) == -1)
+        return 1;
+    return 0;
+}
+int RedisHelper::getAllHeartbeatData(std::vector<ErizoController::HEARTBEAT> &heartbeats)
+{
+    std::vector<std::string> fields, values;
+    if (ACLRedis::getInstance()->hvals("erizo_controller_heartbeat", fields, values) == -1)
+        return 1;
+    heartbeats.clear();
+    for (std::string &v : values)
+    {
+        ErizoController::HEARTBEAT h;
+        if (!ErizoController::HEARTBEAT::fromJSON(v, h))
+            heartbeats.push_back(h);
+    }
+    return 0;
+}
