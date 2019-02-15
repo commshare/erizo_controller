@@ -7,11 +7,6 @@
         "ssl_passwd": "",
         "ssl_port": 443
     },
-    "mysql": {
-        "url": "tcp://119.28.70.47:3306",
-        "username": "root",
-        "password": "cathy978"
-    },
     "redis": {
         "ip": "172.19.5.28",
         "port": 6379,

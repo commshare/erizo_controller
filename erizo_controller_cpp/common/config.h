@@ -25,10 +25,6 @@ public:
   std::string ssl_passwd;
   unsigned short ssl_port;
 
-  std::string mysql_url;
-  std::string mysql_username;
-  std::string mysql_passwd;
-
   std::string redis_ip;
   unsigned short redis_port;
   std::string redis_passwd;

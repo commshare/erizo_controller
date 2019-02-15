@@ -13,10 +13,6 @@ Config::Config()
     ssl_cert = "cert/cert.pem";
     ssl_port = 443;
 
-    mysql_url = "tcp://119.28.70.47:3306";
-    mysql_username = "root";
-    mysql_passwd = "cathy978";
-
     redis_ip = "127.0.0.1";
     redis_port = 6379;
     redis_passwd = "cathy978";
@@ -86,20 +82,6 @@ int Config::init(const std::string &config_file)
         websocket["ssl_port"].type() != Json::intValue)
     {
         ELOG_ERROR("websocket config check error");
-        return 1;
-    }
-
-    Json::Value mysql = root["mysql"];
-    if (!root.isMember("mysql") ||
-        mysql.type() != Json::objectValue ||
-        !mysql.isMember("url") ||
-        mysql["url"].type() != Json::stringValue ||
-        !mysql.isMember("username") ||
-        mysql["username"].type() != Json::stringValue ||
-        !mysql.isMember("password") ||
-        mysql["password"].type() != Json::stringValue)
-    {
-        ELOG_ERROR("mysql config check error");
         return 1;
     }
 
@@ -175,10 +157,6 @@ int Config::init(const std::string &config_file)
     ssl_cert = websocket["ssl_cert"].asString();
     ssl_passwd = websocket["ssl_passwd"].asString();
     ssl_port = websocket["ssl_port"].asInt();
-
-    mysql_url = mysql["url"].asString();
-    mysql_username = mysql["username"].asString();
-    mysql_passwd = mysql["password"].asString();
 
     redis_ip = redis["ip"].asString();
     redis_port = redis["port"].asInt();
