@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "logger.h"
+#include "route/IP_TABLE.h"
 
 #define LOGGER_DECLARE() \
     static log4cxx::LoggerPtr logger;
@@ -134,6 +135,51 @@ class Utils
     {
         Json::FastWriter writer;
         return writer.write(root);
+    }
+
+    static std::string isp2String(edu::iptable::ISPType isp)
+    {
+        switch (isp)
+        {
+        case edu::iptable::AUTO_DETECT:
+            return "AUTO_DETECT";
+        case edu::iptable::MAX_ISP:
+            return "MAX_ISP";
+        case edu::iptable::CTL:
+            return "CTL";       //电信
+        case edu::iptable::CNC:
+            return "CNC";       //网通
+        case edu::iptable::MUTIL:
+            return "MUTIL";     //双线
+        case edu::iptable::CNII:
+            return "CNII";      //铁通
+        case edu::iptable::EDU:
+            return "EDU";       //教育
+        case edu::iptable::WBN:
+            return "WBN";       //长城宽带
+        case edu::iptable::MOB:
+            return "MOB";       //移动
+        case edu::iptable::BGP:
+            return "BGP";       //BGP
+        case edu::iptable::ASIA:
+            return "ASIA";      //亚洲
+        case edu::iptable::SA_ISP:
+            return "SA_ISP";    //南美
+        case edu::iptable::EU:
+            return "EU";        //欧洲
+        case edu::iptable::NA:
+            return "NA";        //北美
+        case edu::iptable::TEST:
+            return "TEST";      //测试
+        case edu::iptable::OA:
+            return "OA";        //大洋洲国家
+        case edu::iptable::AF:
+            return "AF";        //非洲国家
+        case edu::iptable::INTRANET:
+            return "INTRANET";  //内部网
+        default:
+            return "";
+        }
     }
 };
 

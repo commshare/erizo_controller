@@ -532,6 +532,7 @@ void ErizoController::addPublisher(const Client &client, const Publisher &publis
     args[2] = publisher.id;
     args[3] = publisher.label;
     args[4] = amqp_signaling_->getReplyTo();
+    args[5] = Utils::isp2String(client.ip_info.isp);
     data["args"] = args;
     amqp_->rpcNotReply(queuename, data);
 }
@@ -552,7 +553,7 @@ void ErizoController::addVirtualPublisher(const Publisher &publisher, const Brid
     amqp_->rpcNotReply(queuename, data);
 }
 
-void ErizoController::addSubscriber(const Publisher &publisher, const Subscriber &subscriber)
+void ErizoController::addSubscriber(const Client &client, const Publisher &publisher, const Subscriber &subscriber)
 {
     std::string queuename = subscriber.erizo_id;
     Json::Value data;
@@ -562,6 +563,7 @@ void ErizoController::addSubscriber(const Publisher &publisher, const Subscriber
     args[1] = subscriber.subscribe_to;
     args[2] = publisher.label;
     args[3] = amqp_signaling_->getReplyTo();
+    args[4] = Utils::isp2String(client.ip_info.isp);
     data["args"] = args;
     amqp_->rpcNotReply(queuename, data);
 }
@@ -862,7 +864,7 @@ again:
         }
     }
 
-    addSubscriber(publisher, subscriber);
+    addSubscriber(client, publisher, subscriber);
 
     Json::Value reply;
     reply[0] = true;

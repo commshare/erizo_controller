@@ -88,7 +88,7 @@ private:
   void addVirtualPublisher(const Publisher &publisher, const BridgeStream &bridge_stream);
   void removeVirtualPublisher(const BridgeStream &bridge_stream);
 
-  void addSubscriber(const Publisher &publisher, const Subscriber &subscriber);
+  void addSubscriber(const Client &client, const Publisher &publisher, const Subscriber &subscriber);
   void removeSubscriber(const Subscriber &subscriber);
 
   void notifyToRemoveSubscriber(const Subscriber &subscriber);
