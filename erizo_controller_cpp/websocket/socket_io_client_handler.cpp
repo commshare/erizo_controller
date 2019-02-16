@@ -25,7 +25,7 @@ SocketIOClientHandler::SocketIOClientHandler(uWS::WebSocket<uWS::SERVER> *ws,
     else
     {
         std::string ipv4_addr;
-        if (!Utils::searchAddress(addr.address, ipv4_addr))
+        if (Utils::searchAddress(addr.address, ipv4_addr))
             client_.ip_info = Route::getInstance()->processIP(ipv4_addr);
     }
 
