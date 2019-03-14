@@ -96,7 +96,11 @@ int ErizoController::init()
             uint64_t now = Utils::getSystemMs();
 
             RedisLocker redis_locker;
-            redis_locker.lock("erizo_controller_heartbeat_locker");
+            if (!redis_locker.lock("erizo_controller_heartbeat_locker"))
+            {
+                ELOG_ERROR("get redis locker failed when remove-erizo-controller");
+                return;
+            }
 
             if (now - heartbeat_.last_update > update_interval)
             {
@@ -134,6 +138,8 @@ int ErizoController::init()
         }
         RedisHelper::removeHeartbeatData(id_);
     }));
+
+    //TODO：在检测线程中判断ErizoAgent过期,过期时通知清除
 
     init_ = true;
     return 0;
@@ -180,8 +186,17 @@ int ErizoController::allocAgent(Client &client)
         return 1;
     }
 
-    std::string name = it->second;
-    if (RedisHelper::getAllErizoAgent(name, agents))
+    std::string area_name = it->second;
+
+    // std::string locker_name = "erizo_agent_" + area_name + "_heartbeat_locker";
+    // RedisLocker redis_locker;
+    // if (!redis_locker.lock(locker_name))
+    // {
+    //     ELOG_ERROR("get redis locker failed when alloc-agent");
+    //     return 1;
+    // }
+
+    if (RedisHelper::getAllErizoAgent(area_name, agents))
     {
         ELOG_ERROR("getall erizo-agent from redis failed");
         return 1;
@@ -192,7 +207,16 @@ int ErizoController::allocAgent(Client &client)
     for (const ErizoAgent &agent : agents)
     {
         if (now - agent.last_update < (uint64_t)Config::getInstance()->erizo_agent_timeout)
+        {
             agents_alive.push_back(agent);
+        }
+        // else
+        // {
+        //     //ErizoAgent 过期,从redis删除记录
+        //     ELOG_WARN("erizo-agent %s expire", agent.id);
+        //     RedisHelper::removeErizoAgent(area_name, agent);
+        //     RedisHelper::removeAllErizo(agent);
+        // }
     }
 
     if (agents_alive.size() == 0)

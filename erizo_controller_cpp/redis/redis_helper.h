@@ -26,6 +26,8 @@ public:
   static int getAllSubscriber(const std::string &room_id, std::vector<Subscriber> &subscribers);
 
   static int getAllErizoAgent(const std::string &area, std::vector<ErizoAgent> &agents);
+  // static int removeErizoAgent(const std::string &area, const ErizoAgent &agent);
+  // static int removeAllErizo(const ErizoAgent &agent);
 
   static int addBridgeStream(const std::string &room_id, const BridgeStream &bridge_stream);
   static int getBridgeStream(const std::string &room_id, const std::string &bridge_stream_id, BridgeStream &bridge_stream);

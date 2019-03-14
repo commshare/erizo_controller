@@ -20,6 +20,7 @@ class ThreadPool {
   void close();
 
  private:
+  uint32_t index_;
   std::vector<std::shared_ptr<Worker>> workers_;
   std::shared_ptr<Scheduler> scheduler_;
 };

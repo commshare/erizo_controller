@@ -128,6 +128,21 @@ int RedisHelper::getAllErizoAgent(const std::string &area, std::vector<ErizoAgen
     return 0;
 }
 
+// int RedisHelper::removeErizoAgent(const std::string &area, const ErizoAgent &agent)
+// {
+//     std::string key = "erizo_agent_" + area + "_heartbeat";
+//     if (ACLRedis::getInstance()->hdel(key, agent.id) == -1)
+//         return 1;
+//     return 0;
+// }
+
+// int RedisHelper::removeAllErizo(const ErizoAgent &agent)
+// {
+//     if (ACLRedis::getInstance()->del(agent.id))
+//         return 1;
+//     return 0;
+// }
+
 int RedisHelper::addBridgeStream(const std::string &room_id, const BridgeStream &bridge_stream)
 {
     std::string key = "bridge_stream_" + room_id;
