@@ -31,7 +31,7 @@
         "erizo_controller_worker_num": 10,
         "server": [
             {
-                "id": 0,
+                "id": 16,
                 "name": "default"
             }
         ],

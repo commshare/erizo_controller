@@ -15,6 +15,7 @@ class ThreadPool {
   ~ThreadPool();
 
   std::shared_ptr<Worker> getLessUsedWorker();
+  std::shared_ptr<Worker> getSequenceWorker();
   void start();
   void close();
 

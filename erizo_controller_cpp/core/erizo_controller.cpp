@@ -39,7 +39,7 @@ void ErizoController::asyncTask(const std::function<void()> &func)
 {
     if (thread_pool_ != nullptr)
     {
-        std::shared_ptr<erizo::Worker> worker = thread_pool_->getLessUsedWorker();
+        std::shared_ptr<erizo::Worker> worker = thread_pool_->getSequenceWorker();
         worker->task(func);
     }
 }

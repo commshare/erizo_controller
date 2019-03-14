@@ -8,7 +8,7 @@ using erizo::ThreadPool;
 using erizo::Worker;
 
 ThreadPool::ThreadPool(unsigned int num_workers)
-    : workers_{}, scheduler_{std::make_shared<Scheduler>(kNumThreadsPerScheduler)} {
+    : index_(0),workers_{}, scheduler_{std::make_shared<Scheduler>(kNumThreadsPerScheduler)} {
   for (unsigned int index = 0; index < num_workers; index++) {
     workers_.push_back(std::make_shared<Worker>(scheduler_));
   }
@@ -38,6 +38,11 @@ void ThreadPool::start() {
   for (auto promise : promises) {
     promise->get_future().wait();
   }
+}
+
+std::shared_ptr<Worker> ThreadPool::getSequenceWorker(){
+  int index = index_++%workers_.size();
+  return workers_[index];
 }
 
 void ThreadPool::close() {
